@@ -261,7 +261,7 @@ class MainActivity : AppCompatActivity() {
 
         for (nombre in nombres) {
             val v = layoutInflater.inflate(R.layout.item_componente, b.contenedorPiezas, false)
-            v.findViewById<TextView>(R.id.txtNombre).text = nombre
+            v.findViewById<TextView>(R.id.txtNombre).text = Caja.etiqueta(nombre, tipo)
             val ui = PiezaUI(
                 nombre,
                 v.findViewById(R.id.edtModelo),
@@ -370,7 +370,7 @@ class MainActivity : AppCompatActivity() {
     private fun mostrarOpciones(k: String) {
         val opciones = candidatos[k].orEmpty()
         if (opciones.isEmpty()) return
-        val nombre = k.substringBefore('|')
+        val nombre = Caja.etiqueta(k.substringBefore('|'), tipoActual())
         val titulo = if (k.endsWith("|$CAMPO_MODELO")) "$nombre: ¿cuál es el modelo?" else "$nombre: ¿cuál es el N° de serie?"
         MaterialAlertDialogBuilder(this)
             .setTitle(titulo)
@@ -710,7 +710,7 @@ class MainActivity : AppCompatActivity() {
             h.titulo.text = listOf(c.tipo, c.ubicacion).filter { it.isNotEmpty() }.joinToString(" · ")
             h.codigos.text = Caja.COMPONENTES.mapNotNull { n ->
                 val p = c.piezas[n] ?: return@mapNotNull null
-                if (p.vacia()) null else "$n: " + listOf(p.modelo, p.serie.takeIf { it.isNotEmpty() }?.let { "S/N $it" } ?: "")
+                if (p.vacia()) null else "${Caja.etiqueta(n, c.tipo)}: " + listOf(p.modelo, p.serie.takeIf { it.isNotEmpty() }?.let { "S/N $it" } ?: "")
                     .filter { it.isNotEmpty() }.joinToString(" · ")
             }.joinToString("\n").ifEmpty { "Sin componentes" }
             val tienda = listOf(c.cliente, c.tienda.takeIf { it.isNotEmpty() }?.let { "N° $it" } ?: "")

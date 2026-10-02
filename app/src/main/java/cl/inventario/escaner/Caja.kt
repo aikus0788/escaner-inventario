@@ -40,15 +40,21 @@ data class Caja(
         const val SSCO = "SSCO"
 
         /** Orden de las columnas en el Excel (todas las cajas usan las mismas columnas). */
+        /** El propio equipo POS o SSCO; en pantalla se muestra con el nombre del tipo de caja. */
+        const val PRINCIPAL = "POS/SSCO"
+
         val COMPONENTES = listOf(
-            "Pantalla", "Segunda pantalla", "Impresora", "Gaveta", "Teclado", "Scanner de mano", "Scanner de mesón",
+            PRINCIPAL, "Pantalla", "Segunda pantalla", "Impresora", "Gaveta", "Teclado", "Scanner de mano", "Scanner de mesón",
         )
 
         /** Componentes que se piden según el tipo de caja. */
         val POR_TIPO = mapOf(
             POS to COMPONENTES,
-            SSCO to listOf("Pantalla", "Impresora", "Scanner de mesón", "Scanner de mano"),
+            SSCO to listOf(PRINCIPAL, "Pantalla", "Impresora", "Scanner de mesón", "Scanner de mano"),
         )
+
+        /** Nombre que se ve en pantalla: el componente principal se llama como el tipo de caja. */
+        fun etiqueta(nombre: String, tipo: String) = if (nombre == PRINCIPAL) tipo.ifEmpty { PRINCIPAL } else nombre
 
         val ENCABEZADO: List<String> by lazy {
             val e = mutableListOf("N°", "Fecha", "Cliente", "N° Tienda", "Dirección", "Región", "Tipo", "Ubicación POS")
@@ -179,7 +185,7 @@ object Convertidor {
         var notasFinal = notas
         when {
             comp != null -> piezas[comp] = Pieza(modelo, serie)
-            esTipoCaja -> piezas["Pantalla"] = Pieza(modelo, serie)
+            esTipoCaja -> piezas[Caja.PRINCIPAL] = Pieza(modelo, serie)
             modelo.isNotBlank() || serie.isNotBlank() -> {
                 val extra = listOf(tipoEquipo, modelo.takeIf { it.isNotBlank() }?.let { "Mod: $it" }, serie.takeIf { it.isNotBlank() }?.let { "S/N: $it" })
                     .filterNotNull().filter { it.isNotBlank() }.joinToString(" ")
