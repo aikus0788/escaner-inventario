@@ -8,57 +8,67 @@ import java.text.Normalizer
 import java.util.Calendar
 import java.util.zip.ZipInputStream
 
-/** Lee la primera hoja de un .xlsx y la convierte en filas de equipos. */
+/** Lee la primera hoja de un .xlsx y la convierte en cajas (una por fila). */
 object XlsxReader {
 
     class FormatoNoValido(msg: String) : Exception(msg)
 
-    fun leerEquipos(input: InputStream): List<Equipo> {
+    fun leerCajas(input: InputStream): List<Caja> {
         val tabla = leerTabla(input)
         val iEnc = tabla.indexOfFirst { fila ->
             val n = fila.map { normalizar(it) }
-            n.any { it == "modelo" || it == "serie" } || n.any { it.startsWith("tipo") }
+            n.any { it == "modelo" || it == "serie" || it.endsWith("serie") } || n.any { it.startsWith("tipo") }
         }
-        if (iEnc < 0) throw FormatoNoValido("No encontré las columnas (Modelo, Serie, Tipo…) en la primera hoja.")
+        if (iEnc < 0) throw FormatoNoValido("No encontré las columnas (Tipo, Modelo, Serie…) en la primera hoja.")
         val enc = tabla[iEnc].map { normalizar(it) }
 
         fun col(vararg nombres: String): Int = enc.indexOfFirst { h -> nombres.any { n -> h == n } }
             .let { if (it >= 0) it else enc.indexOfFirst { h -> nombres.any { n -> h.startsWith(n) } } }
+        fun exacta(nombre: String): Int = enc.indexOf(nombre)
 
         val cFecha = col("fecha")
         val cCliente = col("cliente")
         val cTienda = col("ntienda", "notienda", "tienda", "numerotienda", "nrotienda")
         val cDireccion = col("direccion")
         val cRegion = col("region")
-        val cTipo = col("tipodeequipo", "tipo", "equipo")
-        val cModelo = col("modelo")
-        val cSerie = col("serie", "numerodeserie", "nserie", "sn")
-        val cUbic = col("ubicacionpos", "ubicacion", "pos")
+        val cUbic = col("ubicacionpos", "ubicacion", "caja")
         val cNotas = col("notas", "observaciones", "comentarios")
 
+        // Formato nuevo: "Pantalla - Modelo", "Pantalla - Serie", …
+        val colsPieza = Caja.COMPONENTES.associateWith { c ->
+            val n = normalizar(c)
+            exacta(n + "modelo") to exacta(n + "serie")
+        }
+        val formatoNuevo = colsPieza.values.any { it.first >= 0 || it.second >= 0 }
+
         val base = System.currentTimeMillis()
-        val equipos = mutableListOf<Equipo>()
+        val cajas = mutableListOf<Caja>()
         for (i in iEnc + 1 until tabla.size) {
             val f = tabla[i]
             fun v(c: Int): String = if (c in f.indices) f[c].trim() else ""
-            val e = Equipo(
-                id = base + i,
-                fecha = fechaLegible(v(cFecha)),
-                cliente = v(cCliente),
-                tienda = v(cTienda),
-                direccion = v(cDireccion),
-                region = v(cRegion),
-                tipo = v(cTipo),
-                modelo = v(cModelo),
-                serie = v(cSerie),
-                ubicacion = v(cUbic),
-                notas = v(cNotas),
-            )
-            if (listOf(e.cliente, e.tienda, e.tipo, e.modelo, e.serie, e.ubicacion, e.notas).any { it.isNotEmpty() }) {
-                equipos.add(e)
+
+            val caja = if (formatoNuevo) {
+                val cTipo = col("tipo")
+                val tipo = v(cTipo).let { if (it.equals(Caja.SSCO, true)) Caja.SSCO else if (it.isBlank()) "" else Caja.POS }
+                val piezas = colsPieza.mapValues { (_, cs) -> Pieza(v(cs.first), v(cs.second)) }.filterValues { !it.vacia() }
+                Caja(
+                    id = base + i, fecha = fechaLegible(v(cFecha)), cliente = v(cCliente), tienda = v(cTienda),
+                    direccion = v(cDireccion), region = v(cRegion), tipo = tipo.ifEmpty { Caja.POS },
+                    ubicacion = v(cUbic), piezas = piezas, notas = v(cNotas),
+                )
+            } else {
+                // Formato antiguo: una fila por equipo.
+                Convertidor.desdeFilaVieja(
+                    id = base + i, fecha = fechaLegible(v(cFecha)), cliente = v(cCliente), tienda = v(cTienda),
+                    direccion = v(cDireccion), region = v(cRegion), tipoEquipo = v(col("tipodeequipo", "tipo", "equipo")),
+                    modelo = v(col("modelo")), serie = v(col("serie", "numerodeserie", "nserie", "sn")),
+                    ubicacion = v(cUbic), notas = v(cNotas),
+                )
             }
+            val tieneDatos = caja.piezas.isNotEmpty() || listOf(caja.cliente, caja.tienda, caja.ubicacion, caja.notas).any { it.isNotEmpty() }
+            if (tieneDatos) cajas.add(caja)
         }
-        return equipos
+        return cajas
     }
 
     /** Excel guarda las fechas como número de días desde 1899-12-30. */

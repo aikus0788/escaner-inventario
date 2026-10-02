@@ -10,16 +10,17 @@ import android.provider.MediaStore
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.EditText
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
-import androidx.core.widget.doAfterTextChanged
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import cl.inventario.escaner.databinding.ActivityMainBinding
+import com.google.android.material.button.MaterialButton
 import com.google.android.material.chip.Chip
 import com.google.android.material.chip.ChipGroup
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
@@ -37,20 +38,29 @@ class MainActivity : AppCompatActivity() {
 
     private lateinit var b: ActivityMainBinding
     private lateinit var almacen: Almacen
-    private var filas = mutableListOf<Equipo>()
+    private lateinit var actualizador: Actualizador
+    private var filas = mutableListOf<Caja>()
     private var editandoId: Long? = null
 
-    private var objetivo = CAMPO_MODELO
+    /** Componente y campo que se está fotografiando, p. ej. "Impresora|serie". */
+    private var objetivo = ""
     private var fotoUri: Uri? = null
     private val candidatos = mutableMapOf<String, List<String>>()
+
+    /** Campos en pantalla de cada componente de la caja. */
+    private class PiezaUI(
+        val nombre: String,
+        val modelo: EditText,
+        val serie: EditText,
+        val stModelo: TextView,
+        val stSerie: TextView,
+    )
+    private val piezasUI = linkedMapOf<String, PiezaUI>()
+    private var ignorarCambioTipo = false
 
     private val clientes = listOf(
         "Paris", "Easy", "Jumbo", "Santa Isabel", "Spid", "Lider", "Acuenta",
         "Mayorista", "Falabella", "Tottus", "Sodimac", OTROS,
-    )
-    private val tipos = listOf(
-        "POS", "Pantalla", "Segunda pantalla", "Impresora", "Gaveta", "Teclado",
-        "Scanner de mano", "Scanner de mesón",
     )
     private val regiones = arrayOf(
         "Arica y Parinacota", "Tarapacá", "Antofagasta", "Atacama", "Coquimbo", "Valparaíso",
@@ -59,6 +69,7 @@ class MainActivity : AppCompatActivity() {
     )
 
     private val formatoFecha = SimpleDateFormat("dd-MM-yyyy", Locale.getDefault())
+    private var fechaDeTrabajo = ""
 
     private val tomarFoto = registerForActivityResult(ActivityResultContracts.TakePicture()) { ok ->
         val uri = fotoUri
@@ -75,31 +86,17 @@ class MainActivity : AppCompatActivity() {
         setContentView(b.root)
 
         savedInstanceState?.let {
-            objetivo = it.getString("objetivo", CAMPO_MODELO)
+            objetivo = it.getString("objetivo", "")
             fotoUri = it.getString("fotoUri")?.let { s -> Uri.parse(s) }
         }
 
         almacen = Almacen(this)
+        actualizador = Actualizador(this)
         filas = almacen.cargar()
 
         // Cliente
         clientes.forEach { c -> b.chipsCliente.addView(nuevoChip(c)) }
         b.chipsCliente.setOnCheckedStateChangeListener { _, _ -> actualizarCliente() }
-
-        // Tipo de equipo
-        tipos.forEach { t -> b.chipsTipo.addView(nuevoChip(t)) }
-        b.chipsTipo.setOnCheckedStateChangeListener { group, ids ->
-            val elegido = ids.firstOrNull()?.let { group.findViewById<Chip>(it)?.text?.toString() }
-            if (elegido != null) {
-                if (b.edtTipo.text?.toString() != elegido) b.edtTipo.setText(elegido)
-            } else if (b.edtTipo.text?.toString() in tipos) {
-                b.edtTipo.setText("")
-            }
-        }
-        b.edtTipo.doAfterTextChanged { t ->
-            val elegido = chipElegido(b.chipsTipo)
-            if (elegido != null && elegido != t?.toString()) b.chipsTipo.clearCheck()
-        }
 
         // Región y fecha
         b.edtRegion.setSimpleItems(regiones)
@@ -107,23 +104,36 @@ class MainActivity : AppCompatActivity() {
         b.edtFecha.setOnClickListener { elegirFecha() }
         b.boxFecha.setEndIconOnClickListener { elegirFecha() }
 
+        // Tipo de caja
+        b.grupoTipo.addOnButtonCheckedListener { _, _, _ ->
+            if (!ignorarCambioTipo) construirPiezas(tipoActual(), leerPiezas())
+        }
+
         restaurarTienda()
+        val tipoGuardado = almacen.leerTienda("tipo")
+        if (tipoGuardado.isNotEmpty()) ponerTipo(tipoGuardado, emptyMap()) else construirPiezas("", emptyMap())
 
         b.lista.layoutManager = LinearLayoutManager(this)
         b.lista.adapter = adaptador
 
-        b.btnFotoModelo.setOnClickListener { abrirCamara(CAMPO_MODELO) }
-        b.btnFotoSerie.setOnClickListener { abrirCamara(CAMPO_SERIE) }
-        b.stModelo.setOnClickListener { mostrarOpciones(CAMPO_MODELO) }
-        b.stSerie.setOnClickListener { mostrarOpciones(CAMPO_SERIE) }
         b.btnGuardar.setOnClickListener { guardar() }
         b.btnCancelar.setOnClickListener { terminarEdicion() }
         b.btnBorrar.setOnClickListener { confirmarBorrar() }
         b.btnExportar.setOnClickListener { menuExportar() }
         b.btnNuevo.setOnClickListener { nuevoExcel() }
         b.btnCargar.setOnClickListener { cargarExcel() }
+        b.btnActualizar.setOnClickListener { actualizador.revisarYPreguntar() }
 
         refrescar()
+
+        // Revisa en silencio si hay versión nueva y lo marca en el botón.
+        actualizador.buscar { v ->
+            if (v != null && v.codigo > actualizador.codigoInstalado()) {
+                b.btnActualizar.text = "Nueva versión"
+                b.btnActualizar.setTextColor(ContextCompat.getColor(this, R.color.amarillo))
+                b.btnActualizar.iconTint = ContextCompat.getColorStateList(this, R.color.amarillo)
+            }
+        }
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
@@ -192,7 +202,7 @@ class MainActivity : AppCompatActivity() {
                 "tienda" to b.edtTienda.text?.toString()?.trim().orEmpty(),
                 "direccion" to b.edtDireccion.text?.toString()?.trim().orEmpty(),
                 "region" to b.edtRegion.text?.toString()?.trim().orEmpty(),
-                "ubicacion" to b.edtUbicacion.text?.toString()?.trim().orEmpty(),
+                "tipo" to tipoActual(),
             )
         )
     }
@@ -202,7 +212,6 @@ class MainActivity : AppCompatActivity() {
             almacen.leerTienda("cliente"), almacen.leerTienda("tienda"),
             almacen.leerTienda("direccion"), almacen.leerTienda("region"),
         )
-        b.edtUbicacion.setText(almacen.leerTienda("ubicacion"))
     }
 
     private fun elegirFecha() {
@@ -218,11 +227,75 @@ class MainActivity : AppCompatActivity() {
         ).show()
     }
 
+    // ---------------- Tipo de caja y componentes ----------------
+
+    private fun tipoActual(): String = when (b.grupoTipo.checkedButtonId) {
+        R.id.btnPos -> Caja.POS
+        R.id.btnSsco -> Caja.SSCO
+        else -> ""
+    }
+
+    private fun ponerTipo(tipo: String, piezas: Map<String, Pieza>) {
+        ignorarCambioTipo = true
+        when (tipo) {
+            Caja.POS -> b.grupoTipo.check(R.id.btnPos)
+            Caja.SSCO -> b.grupoTipo.check(R.id.btnSsco)
+            else -> b.grupoTipo.clearChecked()
+        }
+        ignorarCambioTipo = false
+        construirPiezas(tipo, piezas)
+    }
+
+    private fun leerPiezas(): Map<String, Pieza> = piezasUI.mapValues { (_, p) ->
+        Pieza(p.modelo.text?.toString()?.trim().orEmpty(), p.serie.text?.toString()?.trim().orEmpty())
+    }
+
+    /** Arma los campos de los componentes según el tipo de caja, conservando lo ya escrito. */
+    private fun construirPiezas(tipo: String, valores: Map<String, Pieza>) {
+        b.contenedorPiezas.removeAllViews()
+        piezasUI.clear()
+        candidatos.clear()
+        val nombres = Caja.POR_TIPO[tipo].orEmpty()
+        b.txtElegirTipo.visibility = if (nombres.isEmpty()) View.VISIBLE else View.GONE
+        b.txtComponentes.visibility = if (nombres.isEmpty()) View.GONE else View.VISIBLE
+
+        for (nombre in nombres) {
+            val v = layoutInflater.inflate(R.layout.item_componente, b.contenedorPiezas, false)
+            v.findViewById<TextView>(R.id.txtNombre).text = nombre
+            val ui = PiezaUI(
+                nombre,
+                v.findViewById(R.id.edtModelo),
+                v.findViewById(R.id.edtSerie),
+                v.findViewById(R.id.stModelo),
+                v.findViewById(R.id.stSerie),
+            )
+            valores[nombre]?.let {
+                ui.modelo.setText(it.modelo)
+                ui.serie.setText(it.serie)
+            }
+            v.findViewById<MaterialButton>(R.id.btnFotoModelo).setOnClickListener { abrirCamara(clave(nombre, CAMPO_MODELO)) }
+            v.findViewById<MaterialButton>(R.id.btnFotoSerie).setOnClickListener { abrirCamara(clave(nombre, CAMPO_SERIE)) }
+            ui.stModelo.setOnClickListener { mostrarOpciones(clave(nombre, CAMPO_MODELO)) }
+            ui.stSerie.setOnClickListener { mostrarOpciones(clave(nombre, CAMPO_SERIE)) }
+            piezasUI[nombre] = ui
+            b.contenedorPiezas.addView(v)
+        }
+    }
+
+    private fun clave(nombre: String, campo: String) = "$nombre|$campo"
+
+    private fun campoDe(k: String): Pair<EditText, TextView>? {
+        val nombre = k.substringBefore('|')
+        val campo = k.substringAfter('|')
+        val ui = piezasUI[nombre] ?: return null
+        return if (campo == CAMPO_MODELO) ui.modelo to ui.stModelo else ui.serie to ui.stSerie
+    }
+
     // ---------------- Cámara y lectura ----------------
 
-    private fun abrirCamara(campo: String) {
-        objetivo = campo
-        val archivo = File(cacheDir, "foto_$campo.jpg")
+    private fun abrirCamara(k: String) {
+        objetivo = k
+        val archivo = File(cacheDir, "foto_actual.jpg")
         val uri = FileProvider.getUriForFile(this, "$packageName.files", archivo)
         fotoUri = uri
         try {
@@ -232,11 +305,8 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun estado(campo: String): TextView = if (campo == CAMPO_MODELO) b.stModelo else b.stSerie
-    private fun campoTexto(campo: String) = if (campo == CAMPO_MODELO) b.edtModelo else b.edtSerie
-
-    private fun procesarFoto(uri: Uri, campo: String) {
-        val st = estado(campo)
+    private fun procesarFoto(uri: Uri, k: String) {
+        val (_, st) = campoDe(k) ?: return
         st.visibility = View.VISIBLE
         st.setTextColor(ContextCompat.getColor(this, R.color.gris))
         st.text = "Leyendo la foto…"
@@ -260,26 +330,27 @@ class MainActivity : AppCompatActivity() {
                             tareaTexto.result.textBlocks.flatMap { bl -> bl.lines.map { it.text.trim() } }
                                 .filter { it.length >= 2 }
                         } else emptyList()
-                        decidir(campo, codigos, lineas)
+                        decidir(k, codigos, lineas)
                     }
             }
     }
 
-    private fun decidir(campo: String, codigos: List<String>, lineas: List<String>) {
-        val st = estado(campo)
-        val sugeridos = Lector.buscarConEtiqueta(lineas, campo == CAMPO_SERIE)
+    private fun decidir(k: String, codigos: List<String>, lineas: List<String>) {
+        val (campo, st) = campoDe(k) ?: return
+        val esSerie = k.endsWith("|$CAMPO_SERIE")
+        val sugeridos = Lector.buscarConEtiqueta(lineas, esSerie)
         val todos = LinkedHashSet<String>()
         todos.addAll(sugeridos)
         todos.addAll(codigos)
         todos.addAll(lineas.filter { Lector.pareceCodigo(it) })
         todos.addAll(lineas)
         val opciones = todos.toList().take(30)
-        candidatos[campo] = opciones
+        candidatos[k] = opciones
 
         val mejor = sugeridos.firstOrNull() ?: codigos.singleOrNull()
         when {
             mejor != null -> {
-                campoTexto(campo).setText(mejor)
+                campo.setText(mejor)
                 st.setTextColor(ContextCompat.getColor(this, R.color.verde))
                 val origen = if (sugeridos.isNotEmpty()) "Texto leído" else "Código de barras leído"
                 st.text = if (opciones.size > 1) "✓ $origen. ¿No es el correcto? Toca aquí para elegir otro." else "✓ $origen. Revisa que esté correcto."
@@ -287,7 +358,7 @@ class MainActivity : AppCompatActivity() {
             opciones.isNotEmpty() -> {
                 st.setTextColor(ContextCompat.getColor(this, R.color.gris))
                 st.text = "Elige el valor correcto. Toca aquí para ver las opciones otra vez."
-                mostrarOpciones(campo)
+                mostrarOpciones(k)
             }
             else -> {
                 st.setTextColor(ContextCompat.getColor(this, R.color.rojo))
@@ -296,15 +367,16 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun mostrarOpciones(campo: String) {
-        val opciones = candidatos[campo].orEmpty()
+    private fun mostrarOpciones(k: String) {
+        val opciones = candidatos[k].orEmpty()
         if (opciones.isEmpty()) return
-        val titulo = if (campo == CAMPO_MODELO) "¿Cuál es el modelo?" else "¿Cuál es el número de serie?"
+        val nombre = k.substringBefore('|')
+        val titulo = if (k.endsWith("|$CAMPO_MODELO")) "$nombre: ¿cuál es el modelo?" else "$nombre: ¿cuál es el N° de serie?"
         MaterialAlertDialogBuilder(this)
             .setTitle(titulo)
             .setItems(opciones.toTypedArray()) { _, i ->
-                campoTexto(campo).setText(opciones[i])
-                val st = estado(campo)
+                val (campo, st) = campoDe(k) ?: return@setItems
+                campo.setText(opciones[i])
                 st.setTextColor(ContextCompat.getColor(this, R.color.verde))
                 st.text = "✓ Valor elegido. Toca aquí para cambiarlo."
             }
@@ -314,101 +386,114 @@ class MainActivity : AppCompatActivity() {
 
     // ---------------- Guardar / editar ----------------
 
-    private fun leerFormulario(id: Long) = Equipo(
+    private fun leerFormulario(id: Long) = Caja(
         id = id,
         fecha = b.edtFecha.text?.toString()?.trim().orEmpty(),
         cliente = clienteActual(),
         tienda = b.edtTienda.text?.toString()?.trim().orEmpty(),
         direccion = b.edtDireccion.text?.toString()?.trim().orEmpty(),
         region = b.edtRegion.text?.toString()?.trim().orEmpty(),
-        tipo = b.edtTipo.text?.toString()?.trim().orEmpty(),
-        modelo = b.edtModelo.text?.toString()?.trim().orEmpty(),
-        serie = b.edtSerie.text?.toString()?.trim().orEmpty(),
+        tipo = tipoActual(),
         ubicacion = b.edtUbicacion.text?.toString()?.trim().orEmpty(),
+        piezas = leerPiezas().filterValues { !it.vacia() },
         notas = b.edtNotas.text?.toString()?.trim().orEmpty(),
     )
 
     private fun guardar() {
         val id = editandoId
-        val e = leerFormulario(id ?: System.currentTimeMillis())
+        val c = leerFormulario(id ?: System.currentTimeMillis())
 
-        if (e.tipo.isEmpty() && e.modelo.isEmpty() && e.serie.isEmpty()) {
-            aviso("Completa al menos el tipo de equipo, el modelo o la serie.")
+        if (c.tipo.isEmpty()) {
+            aviso("Elige si la caja es POS o SSCO.")
             return
         }
-        if (chipElegido(b.chipsCliente) == OTROS && e.cliente.isEmpty()) {
+        if (c.piezas.isEmpty()) {
+            aviso("Completa el modelo o la serie de al menos un componente.")
+            return
+        }
+        if (chipElegido(b.chipsCliente) == OTROS && c.cliente.isEmpty()) {
             aviso("Escribe el nombre del cliente o elige otro.")
             b.edtClienteOtro.requestFocus()
             return
         }
 
-        if (id != null) {
-            val i = filas.indexOfFirst { it.id == id }
-            if (i >= 0) filas[i] = e
-            almacen.guardar(filas)
-            aviso("Cambios guardados")
-            terminarEdicion()
-            return
-        }
-
-        if (e.serie.isNotEmpty() && filas.any { it.serie.equals(e.serie, ignoreCase = true) }) {
+        val repetidas = seriesRepetidas(c)
+        if (repetidas.isNotEmpty()) {
             MaterialAlertDialogBuilder(this)
                 .setTitle("Serie repetida")
-                .setMessage("Ya hay un equipo con la serie ${e.serie} en la planilla. ¿Guardarlo igual?")
-                .setPositiveButton("Guardar igual") { _, _ -> agregar(e) }
-                .setNegativeButton("No guardar", null)
+                .setMessage("Estas series ya están en la planilla:\n\n" + repetidas.joinToString("\n") + "\n\n¿Guardar igual?")
+                .setPositiveButton("Guardar igual") { _, _ -> confirmarGuardado(c) }
+                .setNegativeButton("Revisar", null)
                 .show()
             return
         }
-        agregar(e)
+        confirmarGuardado(c)
     }
 
-    private fun agregar(e: Equipo) {
-        filas.add(e)
-        almacen.guardar(filas)
-        recordarTienda()
-        aviso("Equipo ${filas.size} guardado")
-        limpiarEquipo()
+    private fun seriesRepetidas(c: Caja): List<String> {
+        val resultado = mutableListOf<String>()
+        val propias = c.piezas.filterValues { it.serie.isNotBlank() }
+        val vistas = mutableMapOf<String, String>()
+        for ((nombre, p) in propias) {
+            val s = p.serie.uppercase()
+            vistas[s]?.let { otro -> resultado.add("${p.serie} (en $otro y $nombre de esta caja)") }
+            vistas[s] = nombre
+            for (otra in filas) {
+                if (otra.id == c.id) continue
+                val hit = otra.piezas.entries.firstOrNull { it.value.serie.equals(p.serie, ignoreCase = true) }
+                if (hit != null) {
+                    resultado.add("${p.serie} ($nombre) · ya está en ${otra.tipo} ${otra.ubicacion}".trim())
+                    break
+                }
+            }
+        }
+        return resultado
     }
 
-    /** Deja los datos de la tienda, la fecha y la ubicación POS para registrar el siguiente equipo. */
-    private fun limpiarEquipo() {
-        b.chipsTipo.clearCheck()
-        b.edtTipo.setText("")
-        b.edtModelo.setText("")
-        b.edtSerie.setText("")
+    private fun confirmarGuardado(c: Caja) {
+        if (editandoId != null) {
+            val i = filas.indexOfFirst { it.id == c.id }
+            if (i >= 0) filas[i] = c
+            almacen.guardar(filas)
+            aviso("Cambios guardados")
+            terminarEdicion()
+        } else {
+            filas.add(c)
+            almacen.guardar(filas)
+            recordarTienda()
+            aviso("Caja ${filas.size} guardada")
+            limpiarCaja()
+            b.scroll.post { b.scroll.smoothScrollTo(0, b.txtSeccionCaja.top) }
+        }
+    }
+
+    /** Deja la tienda, la fecha y el tipo de caja para registrar la siguiente caja. */
+    private fun limpiarCaja() {
+        b.edtUbicacion.setText("")
         b.edtNotas.setText("")
-        b.stModelo.visibility = View.GONE
-        b.stSerie.visibility = View.GONE
-        candidatos.clear()
+        construirPiezas(tipoActual(), emptyMap())
         editandoId = null
-        b.btnGuardar.text = "GUARDAR FILA"
+        b.btnGuardar.text = "GUARDAR CAJA"
         b.barEdicion.visibility = View.GONE
         refrescar()
     }
 
     private fun terminarEdicion() {
-        limpiarEquipo()
+        editandoId = null
         restaurarTienda()
+        ponerTipo(almacen.leerTienda("tipo"), emptyMap())
         b.edtFecha.setText(fechaDeTrabajo.ifEmpty { formatoFecha.format(Date()) })
+        limpiarCaja()
     }
 
-    private var fechaDeTrabajo = ""
-
-    private fun editar(e: Equipo) {
+    private fun editar(c: Caja) {
         if (editandoId == null) fechaDeTrabajo = b.edtFecha.text?.toString().orEmpty()
-        editandoId = e.id
-        ponerTienda(e.cliente, e.tienda, e.direccion, e.region)
-        b.edtFecha.setText(e.fecha)
-        b.chipsTipo.clearCheck()
-        b.edtTipo.setText(e.tipo)
-        marcarChip(b.chipsTipo, e.tipo)
-        b.edtModelo.setText(e.modelo)
-        b.edtSerie.setText(e.serie)
-        b.edtUbicacion.setText(e.ubicacion)
-        b.edtNotas.setText(e.notas)
-        b.stModelo.visibility = View.GONE
-        b.stSerie.visibility = View.GONE
+        editandoId = c.id
+        ponerTienda(c.cliente, c.tienda, c.direccion, c.region)
+        b.edtFecha.setText(c.fecha)
+        ponerTipo(c.tipo, c.piezas)
+        b.edtUbicacion.setText(c.ubicacion)
+        b.edtNotas.setText(c.notas)
         b.btnGuardar.text = "GUARDAR CAMBIOS"
         b.barEdicion.visibility = View.VISIBLE
         refrescar()
@@ -418,12 +503,12 @@ class MainActivity : AppCompatActivity() {
     private fun confirmarBorrar() {
         val id = editandoId ?: return
         MaterialAlertDialogBuilder(this)
-            .setTitle("¿Borrar esta fila?")
-            .setMessage("No se puede deshacer.")
+            .setTitle("¿Borrar esta caja?")
+            .setMessage("Se borra la fila completa. No se puede deshacer.")
             .setPositiveButton("Borrar") { _, _ ->
                 filas.removeAll { it.id == id }
                 almacen.guardar(filas)
-                aviso("Fila borrada")
+                aviso("Caja borrada")
                 terminarEdicion()
             }
             .setNegativeButton("Cancelar", null)
@@ -431,7 +516,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun refrescar() {
-        b.txtCount.text = if (filas.size == 1) "1 fila" else "${filas.size} filas"
+        b.txtCount.text = if (filas.size == 1) "1 caja" else "${filas.size} cajas"
         b.txtVacio.visibility = if (filas.isEmpty()) View.VISIBLE else View.GONE
         adaptador.notifyDataSetChanged()
     }
@@ -446,7 +531,7 @@ class MainActivity : AppCompatActivity() {
         }
         MaterialAlertDialogBuilder(this)
             .setTitle("¿Empezar un Excel nuevo?")
-            .setMessage("La planilla actual tiene ${filas.size} equipos y se borrará de este teléfono. Si todavía no la exportas, toca «Exportar primero».")
+            .setMessage("La planilla actual tiene ${filas.size} cajas y se borrará de este teléfono. Si todavía no la exportas, toca «Exportar primero».")
             .setPositiveButton("Empezar nuevo") { _, _ ->
                 empezarDeCero()
                 aviso("Planilla nueva lista")
@@ -459,11 +544,12 @@ class MainActivity : AppCompatActivity() {
     private fun empezarDeCero() {
         filas.clear()
         almacen.guardar(filas)
+        editandoId = null
         ponerTienda("", "", "", "")
-        b.edtUbicacion.setText("")
+        ponerTipo("", emptyMap())
         recordarTienda()
         b.edtFecha.setText(formatoFecha.format(Date()))
-        limpiarEquipo()
+        limpiarCaja()
     }
 
     private fun cargarExcel() {
@@ -478,15 +564,15 @@ class MainActivity : AppCompatActivity() {
         aviso("Leyendo el Excel…")
         Thread {
             val resultado = try {
-                val equipos = contentResolver.openInputStream(uri)?.use { XlsxReader.leerEquipos(it) }
+                val cajas = contentResolver.openInputStream(uri)?.use { XlsxReader.leerCajas(it) }
                     ?: throw XlsxReader.FormatoNoValido("No se pudo abrir el archivo.")
-                Result.success(equipos)
+                Result.success(cajas)
             } catch (e: Exception) {
                 Result.failure(e)
             }
             runOnUiThread {
                 resultado.fold(
-                    onSuccess = { equipos -> confirmarImportacion(equipos) },
+                    onSuccess = { cajas -> confirmarImportacion(cajas) },
                     onFailure = { e ->
                         val msg = if (e is XlsxReader.FormatoNoValido) e.message else "No se pudo leer el Excel. Revisa que sea un archivo .xlsx."
                         MaterialAlertDialogBuilder(this)
@@ -500,36 +586,37 @@ class MainActivity : AppCompatActivity() {
         }.start()
     }
 
-    private fun confirmarImportacion(equipos: List<Equipo>) {
-        if (equipos.isEmpty()) {
-            aviso("El Excel no tiene filas de equipos.")
+    private fun confirmarImportacion(cajas: List<Caja>) {
+        if (cajas.isEmpty()) {
+            aviso("El Excel no tiene filas con datos.")
             return
         }
         if (filas.isEmpty()) {
-            aplicarImportacion(equipos, reemplazar = true)
+            aplicarImportacion(cajas, reemplazar = true)
             return
         }
         val opciones = arrayOf(
-            "Reemplazar la planilla actual por el Excel (${equipos.size} equipos)",
-            "Agregar los ${equipos.size} equipos al final de la planilla actual",
+            "Reemplazar la planilla actual por el Excel (${cajas.size} cajas)",
+            "Agregar las ${cajas.size} cajas al final de la planilla actual",
         )
         MaterialAlertDialogBuilder(this)
-            .setTitle("Ya tienes ${filas.size} equipos en la planilla")
-            .setItems(opciones) { _, i -> aplicarImportacion(equipos, reemplazar = i == 0) }
+            .setTitle("Ya tienes ${filas.size} cajas en la planilla")
+            .setItems(opciones) { _, i -> aplicarImportacion(cajas, reemplazar = i == 0) }
             .setNegativeButton("Cancelar", null)
             .show()
     }
 
-    private fun aplicarImportacion(equipos: List<Equipo>, reemplazar: Boolean) {
+    private fun aplicarImportacion(cajas: List<Caja>, reemplazar: Boolean) {
         if (reemplazar) filas.clear()
-        filas.addAll(equipos)
+        filas.addAll(cajas)
         almacen.guardar(filas)
-        val ultimo = equipos.last()
-        ponerTienda(ultimo.cliente, ultimo.tienda, ultimo.direccion, ultimo.region)
-        b.edtUbicacion.setText(ultimo.ubicacion)
+        val ultima = cajas.last()
+        editandoId = null
+        ponerTienda(ultima.cliente, ultima.tienda, ultima.direccion, ultima.region)
+        ponerTipo(ultima.tipo, emptyMap())
         recordarTienda()
-        limpiarEquipo()
-        aviso("Excel cargado: ${equipos.size} equipos. Puedes seguir agregando.")
+        limpiarCaja()
+        aviso("Excel cargado: ${cajas.size} cajas. Puedes seguir agregando.")
     }
 
     // ---------------- Exportar ----------------
@@ -542,7 +629,7 @@ class MainActivity : AppCompatActivity() {
         val opciones = mutableListOf("Compartir (Drive, WhatsApp, correo…)")
         if (Build.VERSION.SDK_INT >= 29) opciones.add("Guardar en Descargas")
         MaterialAlertDialogBuilder(this)
-            .setTitle("Exportar Excel (${filas.size} equipos)")
+            .setTitle("Exportar Excel (${filas.size} cajas)")
             .setItems(opciones.toTypedArray()) { _, i ->
                 if (opciones[i] == "Guardar en Descargas") guardarEnDescargas() else compartir()
             }
@@ -552,9 +639,9 @@ class MainActivity : AppCompatActivity() {
 
     private fun nombreArchivo(): String {
         val partes = mutableListOf("inventario")
-        val ultimo = filas.lastOrNull()
-        ultimo?.cliente?.takeIf { it.isNotBlank() }?.let { partes.add(it) }
-        ultimo?.tienda?.takeIf { it.isNotBlank() }?.let { partes.add(it) }
+        val ultima = filas.lastOrNull()
+        ultima?.cliente?.takeIf { it.isNotBlank() }?.let { partes.add(it) }
+        ultima?.tienda?.takeIf { it.isNotBlank() }?.let { partes.add(it) }
         partes.add(SimpleDateFormat("yyyy-MM-dd_HHmm", Locale.getDefault()).format(Date()))
         val base = partes.joinToString("_").replace(Regex("[^A-Za-z0-9ÁÉÍÓÚáéíóúÑñ_-]+"), "-")
         return "$base.xlsx"
@@ -566,9 +653,9 @@ class MainActivity : AppCompatActivity() {
         val archivo = File(carpeta, nombre)
         XlsxWriter.escribir(
             archivo,
-            Equipo.ENCABEZADO,
-            filas.mapIndexed { i, e -> e.comoFila(i + 1) },
-            Equipo.ANCHOS,
+            Caja.ENCABEZADO,
+            filas.mapIndexed { i, c -> c.comoFila(i + 1) },
+            Caja.ANCHOS,
         )
         return archivo
     }
@@ -580,7 +667,7 @@ class MainActivity : AppCompatActivity() {
             val intent = Intent(Intent.ACTION_SEND).apply {
                 type = MIME_XLSX
                 putExtra(Intent.EXTRA_STREAM, uri)
-                putExtra(Intent.EXTRA_SUBJECT, "Inventario de equipos")
+                putExtra(Intent.EXTRA_SUBJECT, "Inventario de cajas")
                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             }
             startActivity(Intent.createChooser(intent, "Enviar Excel a…"))
@@ -618,17 +705,21 @@ class MainActivity : AppCompatActivity() {
         override fun getItemCount() = filas.size
 
         override fun onBindViewHolder(h: FilaVH, position: Int) {
-            val e = filas[position]
+            val c = filas[position]
             h.num.text = (position + 1).toString()
-            h.titulo.text = listOf(e.tipo.ifEmpty { "Sin tipo" }, e.ubicacion).filter { it.isNotEmpty() }.joinToString(" · ")
-            h.codigos.text = "Mod: ${e.modelo.ifEmpty { "—" }}\nS/N: ${e.serie.ifEmpty { "—" }}"
-            val tienda = listOf(e.cliente, e.tienda.takeIf { it.isNotEmpty() }?.let { "N° $it" } ?: "")
+            h.titulo.text = listOf(c.tipo, c.ubicacion).filter { it.isNotEmpty() }.joinToString(" · ")
+            h.codigos.text = Caja.COMPONENTES.mapNotNull { n ->
+                val p = c.piezas[n] ?: return@mapNotNull null
+                if (p.vacia()) null else "$n: " + listOf(p.modelo, p.serie.takeIf { it.isNotEmpty() }?.let { "S/N $it" } ?: "")
+                    .filter { it.isNotEmpty() }.joinToString(" · ")
+            }.joinToString("\n").ifEmpty { "Sin componentes" }
+            val tienda = listOf(c.cliente, c.tienda.takeIf { it.isNotEmpty() }?.let { "N° $it" } ?: "")
                 .filter { it.isNotEmpty() }.joinToString(" ")
-            h.detalle.text = listOf(tienda, e.fecha, e.notas).filter { it.isNotEmpty() }.joinToString(" · ")
+            h.detalle.text = listOf(tienda, c.fecha, c.notas).filter { it.isNotEmpty() }.joinToString(" · ")
             h.itemView.setBackgroundColor(
-                ContextCompat.getColor(h.itemView.context, if (e.id == editandoId) R.color.linea else R.color.blanco)
+                ContextCompat.getColor(h.itemView.context, if (c.id == editandoId) R.color.linea else R.color.blanco)
             )
-            h.itemView.setOnClickListener { editar(e) }
+            h.itemView.setOnClickListener { editar(c) }
         }
     }
 

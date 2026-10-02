@@ -35,6 +35,21 @@
             android:textColor="@color/tinta"
             android:textSize="13sp"
             android:textStyle="bold" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnActualizar"
+            style="@style/Widget.Material3.Button.TextButton"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="8dp"
+            android:minWidth="0dp"
+            android:paddingHorizontal="8dp"
+            android:text="Actualizar"
+            android:textColor="@color/blanco"
+            app:icon="@drawable/ic_update"
+            app:iconPadding="4dp"
+            app:iconSize="18dp"
+            app:iconTint="@color/blanco" />
     </LinearLayout>
 
     <androidx.core.widget.NestedScrollView
@@ -164,8 +179,8 @@
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
 
-            <!-- ================= EQUIPO ================= -->
-            <TextView style="@style/Seccion" android:layout_marginTop="22dp" android:text="Equipo" />
+            <!-- ================= CAJA ================= -->
+            <TextView android:id="@+id/txtSeccionCaja" style="@style/Seccion" android:layout_marginTop="22dp" android:text="Caja" />
 
             <com.google.android.material.card.MaterialCardView style="@style/Tarjeta">
 
@@ -175,98 +190,33 @@
                     android:orientation="vertical"
                     android:padding="16dp">
 
-                    <TextView style="@style/Etiqueta" android:text="TIPO DE EQUIPO" />
+                    <TextView style="@style/Etiqueta" android:text="TIPO DE CAJA" />
 
-                    <com.google.android.material.chip.ChipGroup
-                        android:id="@+id/chipsTipo"
+                    <com.google.android.material.button.MaterialButtonToggleGroup
+                        android:id="@+id/grupoTipo"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        app:chipSpacingVertical="0dp"
-                        app:singleSelection="true" />
+                        app:selectionRequired="false"
+                        app:singleSelection="true">
+
+                        <com.google.android.material.button.MaterialButton
+                            android:id="@+id/btnPos"
+                            style="@style/BotonTipo"
+                            android:text="POS" />
+
+                        <com.google.android.material.button.MaterialButton
+                            android:id="@+id/btnSsco"
+                            style="@style/BotonTipo"
+                            android:text="SSCO" />
+                    </com.google.android.material.button.MaterialButtonToggleGroup>
+
+                    <TextView style="@style/Etiqueta" android:layout_marginTop="14dp" android:text="UBICACIÓN POS" />
 
                     <com.google.android.material.textfield.TextInputLayout
                         style="@style/Widget.Material3.TextInputLayout.OutlinedBox"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:layout_marginTop="6dp"
-                        android:hint="O escribe otro tipo">
-
-                        <com.google.android.material.textfield.TextInputEditText
-                            android:id="@+id/edtTipo"
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:inputType="textCapSentences" />
-                    </com.google.android.material.textfield.TextInputLayout>
-
-                    <TextView style="@style/Etiqueta" android:layout_marginTop="14dp" android:text="MODELO" />
-
-                    <LinearLayout
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:gravity="center_vertical"
-                        android:orientation="horizontal">
-
-                        <com.google.android.material.textfield.TextInputLayout
-                            style="@style/Widget.Material3.TextInputLayout.OutlinedBox"
-                            android:layout_width="0dp"
-                            android:layout_height="wrap_content"
-                            android:layout_weight="1"
-                            android:hint="Foto a la etiqueta o escribir">
-
-                            <com.google.android.material.textfield.TextInputEditText
-                                android:id="@+id/edtModelo"
-                                android:layout_width="match_parent"
-                                android:layout_height="wrap_content"
-                                android:fontFamily="monospace"
-                                android:inputType="textNoSuggestions|textCapCharacters" />
-                        </com.google.android.material.textfield.TextInputLayout>
-
-                        <com.google.android.material.button.MaterialButton
-                            android:id="@+id/btnFotoModelo"
-                            style="@style/BotonCamara"
-                            android:contentDescription="Fotografiar modelo" />
-                    </LinearLayout>
-
-                    <TextView android:id="@+id/stModelo" style="@style/Estado" />
-
-                    <TextView style="@style/Etiqueta" android:layout_marginTop="10dp" android:text="N° DE SERIE" />
-
-                    <LinearLayout
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:gravity="center_vertical"
-                        android:orientation="horizontal">
-
-                        <com.google.android.material.textfield.TextInputLayout
-                            style="@style/Widget.Material3.TextInputLayout.OutlinedBox"
-                            android:layout_width="0dp"
-                            android:layout_height="wrap_content"
-                            android:layout_weight="1"
-                            android:hint="Foto al código o S/N">
-
-                            <com.google.android.material.textfield.TextInputEditText
-                                android:id="@+id/edtSerie"
-                                android:layout_width="match_parent"
-                                android:layout_height="wrap_content"
-                                android:fontFamily="monospace"
-                                android:inputType="textNoSuggestions|textCapCharacters" />
-                        </com.google.android.material.textfield.TextInputLayout>
-
-                        <com.google.android.material.button.MaterialButton
-                            android:id="@+id/btnFotoSerie"
-                            style="@style/BotonCamara"
-                            android:contentDescription="Fotografiar número de serie" />
-                    </LinearLayout>
-
-                    <TextView android:id="@+id/stSerie" style="@style/Estado" />
-
-                    <TextView style="@style/Etiqueta" android:layout_marginTop="10dp" android:text="UBICACIÓN POS" />
-
-                    <com.google.android.material.textfield.TextInputLayout
-                        style="@style/Widget.Material3.TextInputLayout.OutlinedBox"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:hint="Ej: POS 3, caja rápida">
+                        android:hint="Ej: Caja 3, caja rápida">
 
                         <com.google.android.material.textfield.TextInputEditText
                             android:id="@+id/edtUbicacion"
@@ -274,6 +224,30 @@
                             android:layout_height="wrap_content"
                             android:inputType="textCapSentences" />
                     </com.google.android.material.textfield.TextInputLayout>
+
+                    <TextView
+                        android:id="@+id/txtElegirTipo"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="14dp"
+                        android:background="@drawable/fondo_componente"
+                        android:gravity="center"
+                        android:padding="16dp"
+                        android:text="Elige POS o SSCO para ver sus componentes."
+                        android:textColor="@color/gris" />
+
+                    <TextView
+                        android:id="@+id/txtComponentes"
+                        style="@style/Etiqueta"
+                        android:layout_marginTop="16dp"
+                        android:text="COMPONENTES · deja vacío lo que no tenga"
+                        android:visibility="gone" />
+
+                    <LinearLayout
+                        android:id="@+id/contenedorPiezas"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical" />
 
                     <TextView style="@style/Etiqueta" android:layout_marginTop="14dp" android:text="NOTAS" />
 
@@ -295,7 +269,7 @@
                         android:layout_width="match_parent"
                         android:layout_height="60dp"
                         android:layout_marginTop="18dp"
-                        android:text="GUARDAR FILA"
+                        android:text="GUARDAR CAJA"
                         android:textSize="17sp"
                         android:textStyle="bold"
                         app:cornerRadius="8dp" />
@@ -389,7 +363,7 @@
                 android:background="@color/blanco"
                 android:gravity="center"
                 android:padding="24dp"
-                android:text="Todavía no hay equipos.\nCompleta los datos de la tienda, saca la foto del modelo y de la serie, y toca «Guardar fila».\n\n¿Ya tenías un Excel empezado? Toca «Cargar Excel»."
+                android:text="Todavía no hay cajas.\nCompleta los datos de la tienda, elige POS o SSCO, fotografía las series de cada componente y toca «Guardar caja».\n\n¿Ya tenías un Excel empezado? Toca «Cargar Excel»."
                 android:textColor="@color/gris" />
 
             <androidx.recyclerview.widget.RecyclerView

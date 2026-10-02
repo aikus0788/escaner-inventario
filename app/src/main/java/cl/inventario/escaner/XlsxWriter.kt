@@ -89,7 +89,16 @@ object XlsxWriter {
         sb.append("</row>")
     }
 
-    private fun columna(i: Int): String = ('A' + i).toString()
+    private fun columna(i: Int): String {
+        var n = i + 1
+        val sb = StringBuilder()
+        while (n > 0) {
+            val r = (n - 1) % 26
+            sb.insert(0, 'A' + r)
+            n = (n - 1) / 26
+        }
+        return sb.toString()
+    }
 
     private fun escapar(s: String): String {
         val out = StringBuilder(s.length)

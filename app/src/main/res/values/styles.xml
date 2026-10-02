@@ -49,4 +49,14 @@
         <item name="strokeColor">@color/linea</item>
         <item name="strokeWidth">1dp</item>
     </style>
+    <style name="BotonTipo" parent="Widget.Material3.Button.OutlinedButton">
+        <item name="android:layout_width">0dp</item>
+        <item name="android:layout_height">58dp</item>
+        <item name="android:layout_weight">1</item>
+        <item name="android:textSize">18sp</item>
+        <item name="android:textStyle">bold</item>
+        <item name="android:textColor">@color/texto_tipo</item>
+        <item name="backgroundTint">@color/fondo_tipo</item>
+        <item name="strokeColor">@color/verde</item>
+    </style>
 </resources>
