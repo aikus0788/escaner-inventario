@@ -15,7 +15,7 @@ android {
         versionName = "1.0"
     }
 
-    // La llave de firma llega desde los "secrets" de GitHub; si no está, se firma con la de depuración.
+    // Llave de firma fija: así cada versión nueva se instala encima de la anterior sin perder datos.
     val llave = file("inventario.jks")
     signingConfigs {
         if (llave.exists()) {

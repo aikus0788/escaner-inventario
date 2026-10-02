@@ -20,14 +20,9 @@ jobs:
       - uses: gradle/actions/setup-gradle@v3
         with:
           gradle-version: "8.7"
-      - name: Preparar llave de firma
-        env:
-          KEYSTORE_B64: ${{ secrets.KEYSTORE_B64 }}
-        run: |
-          if [ -n "$KEYSTORE_B64" ]; then echo "$KEYSTORE_B64" | base64 -d > app/inventario.jks; fi
       - name: Compilar
         env:
-          STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
+          STORE_PASSWORD: inventario123
         run: gradle assembleRelease --no-daemon --stacktrace
       - name: Renombrar APK
         run: cp app/build/outputs/apk/release/app-release.apk EscanerInventario.apk
