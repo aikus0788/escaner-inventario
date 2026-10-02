@@ -7,12 +7,28 @@ import org.json.JSONObject
 data class Equipo(
     val id: Long,
     val fecha: String,
+    val cliente: String,
+    val tienda: String,
+    val direccion: String,
+    val region: String,
     val tipo: String,
     val modelo: String,
     val serie: String,
     val ubicacion: String,
     val notas: String,
-)
+) {
+    /** Columnas en el mismo orden que la planilla Excel. */
+    fun comoFila(numero: Int): List<String> =
+        listOf(numero.toString(), fecha, cliente, tienda, direccion, region, tipo, modelo, serie, ubicacion, notas)
+
+    companion object {
+        val ENCABEZADO = listOf(
+            "N°", "Fecha", "Cliente", "N° Tienda", "Dirección", "Región",
+            "Tipo de equipo", "Modelo", "Serie", "Ubicación POS", "Notas",
+        )
+        val ANCHOS = listOf(6, 12, 16, 11, 34, 26, 18, 24, 24, 16, 30)
+    }
+}
 
 /** Guarda la planilla en el propio teléfono. */
 class Almacen(context: Context) {
@@ -29,6 +45,10 @@ class Almacen(context: Context) {
                     Equipo(
                         id = o.optLong("id"),
                         fecha = o.optString("fecha"),
+                        cliente = o.optString("cliente"),
+                        tienda = o.optString("tienda"),
+                        direccion = o.optString("direccion"),
+                        region = o.optString("region"),
                         tipo = o.optString("tipo"),
                         modelo = o.optString("modelo"),
                         serie = o.optString("serie"),
@@ -49,6 +69,10 @@ class Almacen(context: Context) {
                 JSONObject()
                     .put("id", e.id)
                     .put("fecha", e.fecha)
+                    .put("cliente", e.cliente)
+                    .put("tienda", e.tienda)
+                    .put("direccion", e.direccion)
+                    .put("region", e.region)
                     .put("tipo", e.tipo)
                     .put("modelo", e.modelo)
                     .put("serie", e.serie)
@@ -57,5 +81,13 @@ class Almacen(context: Context) {
             )
         }
         prefs.edit().putString("filas", arr.toString()).apply()
+    }
+
+    /** Datos de la tienda que se mantienen entre un equipo y otro. */
+    fun leerTienda(clave: String): String = prefs.getString("tienda_$clave", "") ?: ""
+    fun guardarTienda(valores: Map<String, String>) {
+        val ed = prefs.edit()
+        valores.forEach { (k, v) -> ed.putString("tienda_$k", v) }
+        ed.apply()
     }
 }

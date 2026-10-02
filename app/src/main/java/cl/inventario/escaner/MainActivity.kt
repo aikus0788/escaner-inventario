@@ -1,5 +1,6 @@
 package cl.inventario.escaner
 
+import android.app.DatePickerDialog
 import android.content.ContentValues
 import android.content.Intent
 import android.net.Uri
@@ -15,10 +16,12 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
+import androidx.core.widget.doAfterTextChanged
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import cl.inventario.escaner.databinding.ActivityMainBinding
 import com.google.android.material.chip.Chip
+import com.google.android.material.chip.ChipGroup
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.google.mlkit.vision.barcode.BarcodeScanning
 import com.google.mlkit.vision.common.InputImage
@@ -26,6 +29,7 @@ import com.google.mlkit.vision.text.TextRecognition
 import com.google.mlkit.vision.text.latin.TextRecognizerOptions
 import java.io.File
 import java.text.SimpleDateFormat
+import java.util.Calendar
 import java.util.Date
 import java.util.Locale
 
@@ -40,11 +44,29 @@ class MainActivity : AppCompatActivity() {
     private var fotoUri: Uri? = null
     private val candidatos = mutableMapOf<String, List<String>>()
 
-    private val tipos = listOf("Impresora", "Notebook", "PC", "Monitor", "Router", "Switch", "Teléfono IP", "Proyector", "Escáner")
+    private val clientes = listOf(
+        "Paris", "Easy", "Jumbo", "Santa Isabel", "Spid", "Lider", "Acuenta",
+        "Mayorista", "Falabella", "Tottus", "Sodimac", OTROS,
+    )
+    private val tipos = listOf(
+        "POS", "Pantalla", "Segunda pantalla", "Impresora", "Gaveta", "Teclado",
+        "Scanner de mano", "Scanner de mesón",
+    )
+    private val regiones = arrayOf(
+        "Arica y Parinacota", "Tarapacá", "Antofagasta", "Atacama", "Coquimbo", "Valparaíso",
+        "Metropolitana de Santiago", "Lib. Gral. Bernardo O'Higgins", "Maule", "Ñuble", "Biobío",
+        "La Araucanía", "Los Ríos", "Los Lagos", "Aysén", "Magallanes y la Antártica Chilena",
+    )
+
+    private val formatoFecha = SimpleDateFormat("dd-MM-yyyy", Locale.getDefault())
 
     private val tomarFoto = registerForActivityResult(ActivityResultContracts.TakePicture()) { ok ->
         val uri = fotoUri
         if (ok && uri != null) procesarFoto(uri, objetivo)
+    }
+
+    private val abrirExcel = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) importar(uri)
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -60,17 +82,32 @@ class MainActivity : AppCompatActivity() {
         almacen = Almacen(this)
         filas = almacen.cargar()
 
-        tipos.forEach { t ->
-            val chip = Chip(this).apply {
-                text = t
-                isCheckable = true
-                setOnClickListener {
-                    b.edtTipo.setText(t)
-                    b.edtTipo.setSelection(t.length)
-                }
+        // Cliente
+        clientes.forEach { c -> b.chipsCliente.addView(nuevoChip(c)) }
+        b.chipsCliente.setOnCheckedStateChangeListener { _, _ -> actualizarCliente() }
+
+        // Tipo de equipo
+        tipos.forEach { t -> b.chipsTipo.addView(nuevoChip(t)) }
+        b.chipsTipo.setOnCheckedStateChangeListener { group, ids ->
+            val elegido = ids.firstOrNull()?.let { group.findViewById<Chip>(it)?.text?.toString() }
+            if (elegido != null) {
+                if (b.edtTipo.text?.toString() != elegido) b.edtTipo.setText(elegido)
+            } else if (b.edtTipo.text?.toString() in tipos) {
+                b.edtTipo.setText("")
             }
-            b.chipsTipo.addView(chip)
         }
+        b.edtTipo.doAfterTextChanged { t ->
+            val elegido = chipElegido(b.chipsTipo)
+            if (elegido != null && elegido != t?.toString()) b.chipsTipo.clearCheck()
+        }
+
+        // Región y fecha
+        b.edtRegion.setSimpleItems(regiones)
+        b.edtFecha.setText(formatoFecha.format(Date()))
+        b.edtFecha.setOnClickListener { elegirFecha() }
+        b.boxFecha.setEndIconOnClickListener { elegirFecha() }
+
+        restaurarTienda()
 
         b.lista.layoutManager = LinearLayoutManager(this)
         b.lista.adapter = adaptador
@@ -80,9 +117,11 @@ class MainActivity : AppCompatActivity() {
         b.stModelo.setOnClickListener { mostrarOpciones(CAMPO_MODELO) }
         b.stSerie.setOnClickListener { mostrarOpciones(CAMPO_SERIE) }
         b.btnGuardar.setOnClickListener { guardar() }
-        b.btnCancelar.setOnClickListener { limpiar(mantenerTipo = false) }
+        b.btnCancelar.setOnClickListener { terminarEdicion() }
         b.btnBorrar.setOnClickListener { confirmarBorrar() }
         b.btnExportar.setOnClickListener { menuExportar() }
+        b.btnNuevo.setOnClickListener { nuevoExcel() }
+        b.btnCargar.setOnClickListener { cargarExcel() }
 
         refrescar()
     }
@@ -91,6 +130,92 @@ class MainActivity : AppCompatActivity() {
         super.onSaveInstanceState(outState)
         outState.putString("objetivo", objetivo)
         fotoUri?.let { outState.putString("fotoUri", it.toString()) }
+    }
+
+    private fun nuevoChip(texto: String) = Chip(this).apply {
+        id = View.generateViewId()
+        text = texto
+        isCheckable = true
+        isCheckedIconVisible = false
+    }
+
+    private fun chipElegido(grupo: ChipGroup): String? =
+        grupo.checkedChipId.takeIf { it != View.NO_ID }?.let { grupo.findViewById<Chip>(it)?.text?.toString() }
+
+    private fun marcarChip(grupo: ChipGroup, texto: String): Boolean {
+        for (i in 0 until grupo.childCount) {
+            val c = grupo.getChildAt(i) as? Chip ?: continue
+            if (c.text.toString().equals(texto, ignoreCase = true)) {
+                c.isChecked = true
+                return true
+            }
+        }
+        return false
+    }
+
+    // ---------------- Tienda ----------------
+
+    private fun actualizarCliente() {
+        val elegido = chipElegido(b.chipsCliente)
+        b.boxClienteOtro.visibility = if (elegido == OTROS) View.VISIBLE else View.GONE
+        val hayCliente = elegido != null || !b.edtTienda.text.isNullOrEmpty()
+        b.grupoTienda.visibility = if (hayCliente) View.VISIBLE else View.GONE
+        if (elegido == OTROS && b.edtClienteOtro.text.isNullOrEmpty()) b.edtClienteOtro.requestFocus()
+    }
+
+    private fun clienteActual(): String {
+        val elegido = chipElegido(b.chipsCliente) ?: return ""
+        return if (elegido == OTROS) b.edtClienteOtro.text?.toString()?.trim().orEmpty() else elegido
+    }
+
+    private fun ponerCliente(nombre: String) {
+        b.chipsCliente.clearCheck()
+        b.edtClienteOtro.setText("")
+        if (nombre.isNotBlank() && !marcarChip(b.chipsCliente, nombre)) {
+            marcarChip(b.chipsCliente, OTROS)
+            b.edtClienteOtro.setText(nombre)
+        }
+        actualizarCliente()
+    }
+
+    private fun ponerTienda(cliente: String, tienda: String, direccion: String, region: String) {
+        b.edtTienda.setText(tienda)
+        ponerCliente(cliente)
+        b.edtDireccion.setText(direccion)
+        b.edtRegion.setText(region, false)
+    }
+
+    private fun recordarTienda() {
+        almacen.guardarTienda(
+            mapOf(
+                "cliente" to clienteActual(),
+                "tienda" to b.edtTienda.text?.toString()?.trim().orEmpty(),
+                "direccion" to b.edtDireccion.text?.toString()?.trim().orEmpty(),
+                "region" to b.edtRegion.text?.toString()?.trim().orEmpty(),
+                "ubicacion" to b.edtUbicacion.text?.toString()?.trim().orEmpty(),
+            )
+        )
+    }
+
+    private fun restaurarTienda() {
+        ponerTienda(
+            almacen.leerTienda("cliente"), almacen.leerTienda("tienda"),
+            almacen.leerTienda("direccion"), almacen.leerTienda("region"),
+        )
+        b.edtUbicacion.setText(almacen.leerTienda("ubicacion"))
+    }
+
+    private fun elegirFecha() {
+        val cal = Calendar.getInstance()
+        try {
+            formatoFecha.parse(b.edtFecha.text?.toString().orEmpty())?.let { cal.time = it }
+        } catch (_: Exception) {
+        }
+        DatePickerDialog(
+            this,
+            { _, anio, mes, dia -> b.edtFecha.setText("%02d-%02d-%04d".format(dia, mes + 1, anio)) },
+            cal.get(Calendar.YEAR), cal.get(Calendar.MONTH), cal.get(Calendar.DAY_OF_MONTH),
+        ).show()
     }
 
     // ---------------- Cámara y lectura ----------------
@@ -189,55 +314,67 @@ class MainActivity : AppCompatActivity() {
 
     // ---------------- Guardar / editar ----------------
 
-    private fun guardar() {
-        val tipo = b.edtTipo.text?.toString()?.trim().orEmpty()
-        val modelo = b.edtModelo.text?.toString()?.trim().orEmpty()
-        val serie = b.edtSerie.text?.toString()?.trim().orEmpty()
-        val ubicacion = b.edtUbicacion.text?.toString()?.trim().orEmpty()
-        val notas = b.edtNotas.text?.toString()?.trim().orEmpty()
+    private fun leerFormulario(id: Long) = Equipo(
+        id = id,
+        fecha = b.edtFecha.text?.toString()?.trim().orEmpty(),
+        cliente = clienteActual(),
+        tienda = b.edtTienda.text?.toString()?.trim().orEmpty(),
+        direccion = b.edtDireccion.text?.toString()?.trim().orEmpty(),
+        region = b.edtRegion.text?.toString()?.trim().orEmpty(),
+        tipo = b.edtTipo.text?.toString()?.trim().orEmpty(),
+        modelo = b.edtModelo.text?.toString()?.trim().orEmpty(),
+        serie = b.edtSerie.text?.toString()?.trim().orEmpty(),
+        ubicacion = b.edtUbicacion.text?.toString()?.trim().orEmpty(),
+        notas = b.edtNotas.text?.toString()?.trim().orEmpty(),
+    )
 
-        if (tipo.isEmpty() && modelo.isEmpty() && serie.isEmpty()) {
-            aviso("Completa al menos el tipo, el modelo o la serie.")
+    private fun guardar() {
+        val id = editandoId
+        val e = leerFormulario(id ?: System.currentTimeMillis())
+
+        if (e.tipo.isEmpty() && e.modelo.isEmpty() && e.serie.isEmpty()) {
+            aviso("Completa al menos el tipo de equipo, el modelo o la serie.")
+            return
+        }
+        if (chipElegido(b.chipsCliente) == OTROS && e.cliente.isEmpty()) {
+            aviso("Escribe el nombre del cliente o elige otro.")
+            b.edtClienteOtro.requestFocus()
             return
         }
 
-        val id = editandoId
         if (id != null) {
             val i = filas.indexOfFirst { it.id == id }
-            if (i >= 0) {
-                filas[i] = filas[i].copy(tipo = tipo, modelo = modelo, serie = serie, ubicacion = ubicacion, notas = notas)
-            }
+            if (i >= 0) filas[i] = e
             almacen.guardar(filas)
             aviso("Cambios guardados")
-            limpiar(mantenerTipo = false)
-        } else {
-            if (serie.isNotEmpty() && filas.any { it.serie.equals(serie, ignoreCase = true) }) {
-                MaterialAlertDialogBuilder(this)
-                    .setTitle("Serie repetida")
-                    .setMessage("Ya hay un equipo con la serie $serie en la planilla. ¿Guardarlo igual?")
-                    .setPositiveButton("Guardar igual") { _, _ -> agregar(tipo, modelo, serie, ubicacion, notas) }
-                    .setNegativeButton("No guardar", null)
-                    .show()
-                return
-            }
-            agregar(tipo, modelo, serie, ubicacion, notas)
+            terminarEdicion()
+            return
         }
+
+        if (e.serie.isNotEmpty() && filas.any { it.serie.equals(e.serie, ignoreCase = true) }) {
+            MaterialAlertDialogBuilder(this)
+                .setTitle("Serie repetida")
+                .setMessage("Ya hay un equipo con la serie ${e.serie} en la planilla. ¿Guardarlo igual?")
+                .setPositiveButton("Guardar igual") { _, _ -> agregar(e) }
+                .setNegativeButton("No guardar", null)
+                .show()
+            return
+        }
+        agregar(e)
     }
 
-    private fun agregar(tipo: String, modelo: String, serie: String, ubicacion: String, notas: String) {
-        val fecha = SimpleDateFormat("dd-MM-yyyy HH:mm", Locale.getDefault()).format(Date())
-        filas.add(Equipo(System.currentTimeMillis(), fecha, tipo, modelo, serie, ubicacion, notas))
+    private fun agregar(e: Equipo) {
+        filas.add(e)
         almacen.guardar(filas)
+        recordarTienda()
         aviso("Equipo ${filas.size} guardado")
-        limpiar(mantenerTipo = true)
+        limpiarEquipo()
     }
 
-    private fun limpiar(mantenerTipo: Boolean) {
-        if (!mantenerTipo) {
-            b.edtTipo.setText("")
-            b.edtUbicacion.setText("")
-            b.chipsTipo.clearCheck()
-        }
+    /** Deja los datos de la tienda, la fecha y la ubicación POS para registrar el siguiente equipo. */
+    private fun limpiarEquipo() {
+        b.chipsTipo.clearCheck()
+        b.edtTipo.setText("")
         b.edtModelo.setText("")
         b.edtSerie.setText("")
         b.edtNotas.setText("")
@@ -250,9 +387,22 @@ class MainActivity : AppCompatActivity() {
         refrescar()
     }
 
+    private fun terminarEdicion() {
+        limpiarEquipo()
+        restaurarTienda()
+        b.edtFecha.setText(fechaDeTrabajo.ifEmpty { formatoFecha.format(Date()) })
+    }
+
+    private var fechaDeTrabajo = ""
+
     private fun editar(e: Equipo) {
+        if (editandoId == null) fechaDeTrabajo = b.edtFecha.text?.toString().orEmpty()
         editandoId = e.id
+        ponerTienda(e.cliente, e.tienda, e.direccion, e.region)
+        b.edtFecha.setText(e.fecha)
+        b.chipsTipo.clearCheck()
         b.edtTipo.setText(e.tipo)
+        marcarChip(b.chipsTipo, e.tipo)
         b.edtModelo.setText(e.modelo)
         b.edtSerie.setText(e.serie)
         b.edtUbicacion.setText(e.ubicacion)
@@ -274,7 +424,7 @@ class MainActivity : AppCompatActivity() {
                 filas.removeAll { it.id == id }
                 almacen.guardar(filas)
                 aviso("Fila borrada")
-                limpiar(mantenerTipo = false)
+                terminarEdicion()
             }
             .setNegativeButton("Cancelar", null)
             .show()
@@ -286,6 +436,102 @@ class MainActivity : AppCompatActivity() {
         adaptador.notifyDataSetChanged()
     }
 
+    // ---------------- Nuevo / cargar Excel ----------------
+
+    private fun nuevoExcel() {
+        if (filas.isEmpty()) {
+            empezarDeCero()
+            aviso("Listo para un Excel nuevo")
+            return
+        }
+        MaterialAlertDialogBuilder(this)
+            .setTitle("¿Empezar un Excel nuevo?")
+            .setMessage("La planilla actual tiene ${filas.size} equipos y se borrará de este teléfono. Si todavía no la exportas, toca «Exportar primero».")
+            .setPositiveButton("Empezar nuevo") { _, _ ->
+                empezarDeCero()
+                aviso("Planilla nueva lista")
+            }
+            .setNeutralButton("Exportar primero") { _, _ -> compartir() }
+            .setNegativeButton("Cancelar", null)
+            .show()
+    }
+
+    private fun empezarDeCero() {
+        filas.clear()
+        almacen.guardar(filas)
+        ponerTienda("", "", "", "")
+        b.edtUbicacion.setText("")
+        recordarTienda()
+        b.edtFecha.setText(formatoFecha.format(Date()))
+        limpiarEquipo()
+    }
+
+    private fun cargarExcel() {
+        try {
+            abrirExcel.launch(arrayOf(MIME_XLSX, "application/octet-stream", "application/zip", "application/vnd.ms-excel"))
+        } catch (e: Exception) {
+            aviso("No se encontró un explorador de archivos en este teléfono.")
+        }
+    }
+
+    private fun importar(uri: Uri) {
+        aviso("Leyendo el Excel…")
+        Thread {
+            val resultado = try {
+                val equipos = contentResolver.openInputStream(uri)?.use { XlsxReader.leerEquipos(it) }
+                    ?: throw XlsxReader.FormatoNoValido("No se pudo abrir el archivo.")
+                Result.success(equipos)
+            } catch (e: Exception) {
+                Result.failure(e)
+            }
+            runOnUiThread {
+                resultado.fold(
+                    onSuccess = { equipos -> confirmarImportacion(equipos) },
+                    onFailure = { e ->
+                        val msg = if (e is XlsxReader.FormatoNoValido) e.message else "No se pudo leer el Excel. Revisa que sea un archivo .xlsx."
+                        MaterialAlertDialogBuilder(this)
+                            .setTitle("No se pudo cargar")
+                            .setMessage(msg)
+                            .setPositiveButton("Entendido", null)
+                            .show()
+                    },
+                )
+            }
+        }.start()
+    }
+
+    private fun confirmarImportacion(equipos: List<Equipo>) {
+        if (equipos.isEmpty()) {
+            aviso("El Excel no tiene filas de equipos.")
+            return
+        }
+        if (filas.isEmpty()) {
+            aplicarImportacion(equipos, reemplazar = true)
+            return
+        }
+        val opciones = arrayOf(
+            "Reemplazar la planilla actual por el Excel (${equipos.size} equipos)",
+            "Agregar los ${equipos.size} equipos al final de la planilla actual",
+        )
+        MaterialAlertDialogBuilder(this)
+            .setTitle("Ya tienes ${filas.size} equipos en la planilla")
+            .setItems(opciones) { _, i -> aplicarImportacion(equipos, reemplazar = i == 0) }
+            .setNegativeButton("Cancelar", null)
+            .show()
+    }
+
+    private fun aplicarImportacion(equipos: List<Equipo>, reemplazar: Boolean) {
+        if (reemplazar) filas.clear()
+        filas.addAll(equipos)
+        almacen.guardar(filas)
+        val ultimo = equipos.last()
+        ponerTienda(ultimo.cliente, ultimo.tienda, ultimo.direccion, ultimo.region)
+        b.edtUbicacion.setText(ultimo.ubicacion)
+        recordarTienda()
+        limpiarEquipo()
+        aviso("Excel cargado: ${equipos.size} equipos. Puedes seguir agregando.")
+    }
+
     // ---------------- Exportar ----------------
 
     private fun menuExportar() {
@@ -295,22 +541,24 @@ class MainActivity : AppCompatActivity() {
         }
         val opciones = mutableListOf("Compartir (Drive, WhatsApp, correo…)")
         if (Build.VERSION.SDK_INT >= 29) opciones.add("Guardar en Descargas")
-        opciones.add("Vaciar la planilla")
         MaterialAlertDialogBuilder(this)
             .setTitle("Exportar Excel (${filas.size} equipos)")
             .setItems(opciones.toTypedArray()) { _, i ->
-                when (opciones[i]) {
-                    "Guardar en Descargas" -> guardarEnDescargas()
-                    "Vaciar la planilla" -> confirmarVaciar()
-                    else -> compartir()
-                }
+                if (opciones[i] == "Guardar en Descargas") guardarEnDescargas() else compartir()
             }
             .setNegativeButton("Cancelar", null)
             .show()
     }
 
-    private fun nombreArchivo(): String =
-        "inventario_" + SimpleDateFormat("yyyy-MM-dd_HHmm", Locale.getDefault()).format(Date()) + ".xlsx"
+    private fun nombreArchivo(): String {
+        val partes = mutableListOf("inventario")
+        val ultimo = filas.lastOrNull()
+        ultimo?.cliente?.takeIf { it.isNotBlank() }?.let { partes.add(it) }
+        ultimo?.tienda?.takeIf { it.isNotBlank() }?.let { partes.add(it) }
+        partes.add(SimpleDateFormat("yyyy-MM-dd_HHmm", Locale.getDefault()).format(Date()))
+        val base = partes.joinToString("_").replace(Regex("[^A-Za-z0-9ÁÉÍÓÚáéíóúÑñ_-]+"), "-")
+        return "$base.xlsx"
+    }
 
     private fun crearExcel(nombre: String): File {
         val carpeta = File(cacheDir, "excel").apply { mkdirs() }
@@ -318,9 +566,9 @@ class MainActivity : AppCompatActivity() {
         val archivo = File(carpeta, nombre)
         XlsxWriter.escribir(
             archivo,
-            listOf("N°", "Fecha", "Tipo", "Modelo", "Serie", "Ubicación", "Notas"),
-            filas.mapIndexed { i, e -> listOf((i + 1).toString(), e.fecha, e.tipo, e.modelo, e.serie, e.ubicacion, e.notas) },
-            listOf(6, 18, 16, 26, 26, 24, 30),
+            Equipo.ENCABEZADO,
+            filas.mapIndexed { i, e -> e.comoFila(i + 1) },
+            Equipo.ANCHOS,
         )
         return archivo
     }
@@ -359,20 +607,6 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun confirmarVaciar() {
-        MaterialAlertDialogBuilder(this)
-            .setTitle("¿Vaciar la planilla?")
-            .setMessage("Se borrarán los ${filas.size} equipos de este teléfono. Exporta el Excel antes si lo necesitas.")
-            .setPositiveButton("Vaciar") { _, _ ->
-                filas.clear()
-                almacen.guardar(filas)
-                limpiar(mantenerTipo = false)
-                aviso("Planilla vacía")
-            }
-            .setNegativeButton("Cancelar", null)
-            .show()
-    }
-
     private fun aviso(msg: String) = Toast.makeText(this, msg, Toast.LENGTH_LONG).show()
 
     // ---------------- Lista ----------------
@@ -386,9 +620,11 @@ class MainActivity : AppCompatActivity() {
         override fun onBindViewHolder(h: FilaVH, position: Int) {
             val e = filas[position]
             h.num.text = (position + 1).toString()
-            h.titulo.text = e.tipo.ifEmpty { "Sin tipo" }
+            h.titulo.text = listOf(e.tipo.ifEmpty { "Sin tipo" }, e.ubicacion).filter { it.isNotEmpty() }.joinToString(" · ")
             h.codigos.text = "Mod: ${e.modelo.ifEmpty { "—" }}\nS/N: ${e.serie.ifEmpty { "—" }}"
-            h.detalle.text = listOf(e.ubicacion, e.notas, e.fecha).filter { it.isNotEmpty() }.joinToString(" · ")
+            val tienda = listOf(e.cliente, e.tienda.takeIf { it.isNotEmpty() }?.let { "N° $it" } ?: "")
+                .filter { it.isNotEmpty() }.joinToString(" ")
+            h.detalle.text = listOf(tienda, e.fecha, e.notas).filter { it.isNotEmpty() }.joinToString(" · ")
             h.itemView.setBackgroundColor(
                 ContextCompat.getColor(h.itemView.context, if (e.id == editandoId) R.color.linea else R.color.blanco)
             )
@@ -406,6 +642,7 @@ class MainActivity : AppCompatActivity() {
     companion object {
         const val CAMPO_MODELO = "modelo"
         const val CAMPO_SERIE = "serie"
+        const val OTROS = "Otros"
         const val MIME_XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     }
 }

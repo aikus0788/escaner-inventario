@@ -11,8 +11,8 @@ android {
         applicationId = "cl.inventario.escaner"
         minSdk = 26
         targetSdk = 34
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = 2
+        versionName = "1.1"
     }
 
     // Llave de firma fija: así cada versión nueva se instala encima de la anterior sin perder datos.

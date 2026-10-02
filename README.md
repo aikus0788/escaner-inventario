@@ -13,10 +13,11 @@ Ve a **Releases** (columna derecha de esta página) y descarga `EscanerInventari
 3. Toca **Instalar**.
 
 ## Uso
-1. Elige el tipo de equipo.
-2. Toca la cámara junto a **Modelo** y fotografía la etiqueta. Repite para **N° de serie**.
-3. Revisa el valor leído (si hay varias opciones, eliges la correcta) y toca **Guardar fila**.
+1. **Tienda:** elige el cliente (o «Otros» y escribe el nombre), el N° de tienda, la dirección, la región y revisa la fecha.
+2. **Equipo:** elige el tipo (POS, pantalla, impresora, gaveta…), toca la cámara junto a **Modelo** y luego junto a **N° de serie**.
+3. Escribe la **Ubicación POS**, revisa los valores leídos y toca **Guardar fila**. Los datos de la tienda se mantienen para el siguiente equipo.
 4. **Exportar Excel** → compartir a Drive / WhatsApp / correo, o guardar en Descargas.
+5. **Nuevo Excel** empieza una planilla vacía. **Cargar Excel** abre una planilla ya empezada para seguir llenándola.
 
 Cada teléfono guarda su propia planilla.
 

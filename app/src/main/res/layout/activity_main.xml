@@ -50,14 +50,124 @@
             android:orientation="vertical"
             android:padding="16dp">
 
-            <com.google.android.material.card.MaterialCardView
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                app:cardBackgroundColor="@color/blanco"
-                app:cardCornerRadius="10dp"
-                app:cardElevation="0dp"
-                app:strokeColor="@color/linea"
-                app:strokeWidth="1dp">
+            <!-- ================= TIENDA ================= -->
+            <TextView style="@style/Seccion" android:text="Tienda" />
+
+            <com.google.android.material.card.MaterialCardView style="@style/Tarjeta">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="16dp">
+
+                    <TextView style="@style/Etiqueta" android:text="CLIENTE" />
+
+                    <com.google.android.material.chip.ChipGroup
+                        android:id="@+id/chipsCliente"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        app:chipSpacingVertical="0dp"
+                        app:singleSelection="true" />
+
+                    <com.google.android.material.textfield.TextInputLayout
+                        android:id="@+id/boxClienteOtro"
+                        style="@style/Widget.Material3.TextInputLayout.OutlinedBox"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="6dp"
+                        android:hint="Escribe el nombre del cliente"
+                        android:visibility="gone">
+
+                        <com.google.android.material.textfield.TextInputEditText
+                            android:id="@+id/edtClienteOtro"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:inputType="textCapWords" />
+                    </com.google.android.material.textfield.TextInputLayout>
+
+                    <LinearLayout
+                        android:id="@+id/grupoTienda"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical"
+                        android:visibility="gone">
+
+                        <TextView style="@style/Etiqueta" android:layout_marginTop="14dp" android:text="N° DE TIENDA" />
+
+                        <com.google.android.material.textfield.TextInputLayout
+                            style="@style/Widget.Material3.TextInputLayout.OutlinedBox"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:hint="Ej: 512">
+
+                            <com.google.android.material.textfield.TextInputEditText
+                                android:id="@+id/edtTienda"
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:fontFamily="monospace"
+                                android:inputType="textCapCharacters|textNoSuggestions" />
+                        </com.google.android.material.textfield.TextInputLayout>
+                    </LinearLayout>
+
+                    <TextView style="@style/Etiqueta" android:layout_marginTop="14dp" android:text="DIRECCIÓN DE LA TIENDA" />
+
+                    <com.google.android.material.textfield.TextInputLayout
+                        style="@style/Widget.Material3.TextInputLayout.OutlinedBox"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:hint="Calle, número y comuna">
+
+                        <com.google.android.material.textfield.TextInputEditText
+                            android:id="@+id/edtDireccion"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:inputType="textPostalAddress|textCapWords" />
+                    </com.google.android.material.textfield.TextInputLayout>
+
+                    <TextView style="@style/Etiqueta" android:layout_marginTop="14dp" android:text="REGIÓN" />
+
+                    <com.google.android.material.textfield.TextInputLayout
+                        style="@style/Widget.Material3.TextInputLayout.OutlinedBox.ExposedDropdownMenu"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:hint="Elige la región">
+
+                        <com.google.android.material.textfield.MaterialAutoCompleteTextView
+                            android:id="@+id/edtRegion"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:inputType="none" />
+                    </com.google.android.material.textfield.TextInputLayout>
+
+                    <TextView style="@style/Etiqueta" android:layout_marginTop="14dp" android:text="FECHA" />
+
+                    <com.google.android.material.textfield.TextInputLayout
+                        android:id="@+id/boxFecha"
+                        style="@style/Widget.Material3.TextInputLayout.OutlinedBox"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        app:helperText="Toca para cambiar la fecha"
+                        app:endIconMode="custom"
+                        app:endIconDrawable="@drawable/ic_calendar"
+                        app:endIconContentDescription="Cambiar fecha">
+
+                        <com.google.android.material.textfield.TextInputEditText
+                            android:id="@+id/edtFecha"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:cursorVisible="false"
+                            android:focusable="false"
+                            android:fontFamily="monospace"
+                            android:inputType="none" />
+                    </com.google.android.material.textfield.TextInputLayout>
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
+            <!-- ================= EQUIPO ================= -->
+            <TextView style="@style/Seccion" android:layout_marginTop="22dp" android:text="Equipo" />
+
+            <com.google.android.material.card.MaterialCardView style="@style/Tarjeta">
 
                 <LinearLayout
                     android:layout_width="match_parent"
@@ -67,11 +177,19 @@
 
                     <TextView style="@style/Etiqueta" android:text="TIPO DE EQUIPO" />
 
+                    <com.google.android.material.chip.ChipGroup
+                        android:id="@+id/chipsTipo"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        app:chipSpacingVertical="0dp"
+                        app:singleSelection="true" />
+
                     <com.google.android.material.textfield.TextInputLayout
                         style="@style/Widget.Material3.TextInputLayout.OutlinedBox"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:hint="Ej: Impresora">
+                        android:layout_marginTop="6dp"
+                        android:hint="O escribe otro tipo">
 
                         <com.google.android.material.textfield.TextInputEditText
                             android:id="@+id/edtTipo"
@@ -79,19 +197,6 @@
                             android:layout_height="wrap_content"
                             android:inputType="textCapSentences" />
                     </com.google.android.material.textfield.TextInputLayout>
-
-                    <HorizontalScrollView
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:scrollbars="none">
-
-                        <com.google.android.material.chip.ChipGroup
-                            android:id="@+id/chipsTipo"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            app:singleLine="true"
-                            app:singleSelection="true" />
-                    </HorizontalScrollView>
 
                     <TextView style="@style/Etiqueta" android:layout_marginTop="14dp" android:text="MODELO" />
 
@@ -155,13 +260,13 @@
 
                     <TextView android:id="@+id/stSerie" style="@style/Estado" />
 
-                    <TextView style="@style/Etiqueta" android:layout_marginTop="10dp" android:text="UBICACIÓN" />
+                    <TextView style="@style/Etiqueta" android:layout_marginTop="10dp" android:text="UBICACIÓN POS" />
 
                     <com.google.android.material.textfield.TextInputLayout
                         style="@style/Widget.Material3.TextInputLayout.OutlinedBox"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:hint="Ej: Oficina 2, piso 3">
+                        android:hint="Ej: POS 3, caja rápida">
 
                         <com.google.android.material.textfield.TextInputEditText
                             android:id="@+id/edtUbicacion"
@@ -222,6 +327,7 @@
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
 
+            <!-- ================= PLANILLA ================= -->
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
@@ -231,13 +337,11 @@
                 android:orientation="horizontal">
 
                 <TextView
+                    style="@style/Seccion"
                     android:layout_width="0dp"
-                    android:layout_height="wrap_content"
                     android:layout_weight="1"
-                    android:text="Planilla"
-                    android:textColor="@color/tinta"
-                    android:textSize="20sp"
-                    android:textStyle="bold" />
+                    android:layout_marginBottom="0dp"
+                    android:text="Planilla" />
 
                 <TextView
                     android:layout_width="wrap_content"
@@ -247,6 +351,37 @@
                     android:textSize="12sp" />
             </LinearLayout>
 
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="10dp"
+                android:orientation="horizontal">
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnNuevo"
+                    style="@style/Widget.Material3.Button.OutlinedButton"
+                    android:layout_width="0dp"
+                    android:layout_height="52dp"
+                    android:layout_marginEnd="6dp"
+                    android:layout_weight="1"
+                    android:text="Nuevo Excel"
+                    android:textColor="@color/tinta"
+                    app:cornerRadius="8dp"
+                    app:strokeColor="@color/linea" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnCargar"
+                    style="@style/Widget.Material3.Button.OutlinedButton"
+                    android:layout_width="0dp"
+                    android:layout_height="52dp"
+                    android:layout_marginStart="6dp"
+                    android:layout_weight="1"
+                    android:text="Cargar Excel"
+                    android:textColor="@color/tinta"
+                    app:cornerRadius="8dp"
+                    app:strokeColor="@color/linea" />
+            </LinearLayout>
+
             <TextView
                 android:id="@+id/txtVacio"
                 android:layout_width="match_parent"
@@ -254,7 +389,7 @@
                 android:background="@color/blanco"
                 android:gravity="center"
                 android:padding="24dp"
-                android:text="Todavía no hay equipos.\nElige el tipo, saca la foto del modelo y de la serie, y toca «Guardar fila»."
+                android:text="Todavía no hay equipos.\nCompleta los datos de la tienda, saca la foto del modelo y de la serie, y toca «Guardar fila».\n\n¿Ya tenías un Excel empezado? Toca «Cargar Excel»."
                 android:textColor="@color/gris" />
 
             <androidx.recyclerview.widget.RecyclerView
