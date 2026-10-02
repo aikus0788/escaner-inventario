@@ -1,0 +1,12 @@
+<resources>
+    <style name="Theme.Escaner" parent="Theme.Material3.Light.NoActionBar">
+        <item name="colorPrimary">@color/verde</item>
+        <item name="colorOnPrimary">@color/blanco</item>
+        <item name="colorSecondary">@color/amarillo</item>
+        <item name="colorOnSecondary">@color/tinta</item>
+        <item name="colorSecondaryContainer">@color/verde</item>
+        <item name="colorOnSecondaryContainer">@color/blanco</item>
+        <item name="android:colorBackground">@color/fondo</item>
+        <item name="android:statusBarColor">@color/verde_oscuro</item>
+    </style>
+</resources>

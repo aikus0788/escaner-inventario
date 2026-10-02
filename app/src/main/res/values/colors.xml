@@ -1,0 +1,11 @@
+<resources>
+    <color name="verde">#1F5F4F</color>
+    <color name="verde_oscuro">#16463A</color>
+    <color name="amarillo">#F2B705</color>
+    <color name="tinta">#1D2321</color>
+    <color name="fondo">#EEF0EE</color>
+    <color name="blanco">#FFFFFF</color>
+    <color name="gris">#5D6763</color>
+    <color name="linea">#D4D9D6</color>
+    <color name="rojo">#B3261E</color>
+</resources>
