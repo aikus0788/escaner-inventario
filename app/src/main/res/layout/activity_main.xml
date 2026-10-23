@@ -225,6 +225,22 @@
                             android:inputType="textCapSentences" />
                     </com.google.android.material.textfield.TextInputLayout>
 
+                    <TextView style="@style/Etiqueta" android:layout_marginTop="14dp" android:text="N° DE POS" />
+
+                    <com.google.android.material.textfield.TextInputLayout
+                        style="@style/Widget.Material3.TextInputLayout.OutlinedBox"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:hint="Ej: 05">
+
+                        <com.google.android.material.textfield.TextInputEditText
+                            android:id="@+id/edtNumeroPos"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:fontFamily="monospace"
+                            android:inputType="textCapCharacters|textNoSuggestions" />
+                    </com.google.android.material.textfield.TextInputLayout>
+
                     <TextView
                         android:id="@+id/txtElegirTipo"
                         android:layout_width="match_parent"

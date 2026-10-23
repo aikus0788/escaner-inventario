@@ -32,6 +32,7 @@ object XlsxReader {
         val cDireccion = col("direccion")
         val cRegion = col("region")
         val cUbic = col("ubicacionpos", "ubicacion", "caja")
+        val cNumPos = col("npos", "numeropos", "numerodepos", "nropos", "nodepos")
         val cNotas = col("notas", "observaciones", "comentarios")
 
         // Formato nuevo: "Pantalla - Modelo", "Pantalla - Serie", …
@@ -54,7 +55,7 @@ object XlsxReader {
                 Caja(
                     id = base + i, fecha = fechaLegible(v(cFecha)), cliente = v(cCliente), tienda = v(cTienda),
                     direccion = v(cDireccion), region = v(cRegion), tipo = tipo.ifEmpty { Caja.POS },
-                    ubicacion = v(cUbic), piezas = piezas, notas = v(cNotas),
+                    ubicacion = v(cUbic), numeroPos = v(cNumPos), piezas = piezas, notas = v(cNotas),
                 )
             } else {
                 // Formato antiguo: una fila por equipo.
@@ -62,10 +63,10 @@ object XlsxReader {
                     id = base + i, fecha = fechaLegible(v(cFecha)), cliente = v(cCliente), tienda = v(cTienda),
                     direccion = v(cDireccion), region = v(cRegion), tipoEquipo = v(col("tipodeequipo", "tipo", "equipo")),
                     modelo = v(col("modelo")), serie = v(col("serie", "numerodeserie", "nserie", "sn")),
-                    ubicacion = v(cUbic), notas = v(cNotas),
+                    ubicacion = v(cUbic), notas = v(cNotas), numeroPos = v(cNumPos),
                 )
             }
-            val tieneDatos = caja.piezas.isNotEmpty() || listOf(caja.cliente, caja.tienda, caja.ubicacion, caja.notas).any { it.isNotEmpty() }
+            val tieneDatos = caja.piezas.isNotEmpty() || listOf(caja.cliente, caja.tienda, caja.ubicacion, caja.numeroPos, caja.notas).any { it.isNotEmpty() }
             if (tieneDatos) cajas.add(caja)
         }
         return cajas

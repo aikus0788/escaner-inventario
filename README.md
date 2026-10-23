@@ -14,7 +14,7 @@ Ve a **Releases** (columna derecha de esta página) y descarga `EscanerInventari
 
 ## Uso
 1. **Tienda:** elige el cliente (o «Otros» y escribe el nombre), el N° de tienda, la dirección, la región y revisa la fecha.
-2. **Caja:** elige **POS** o **SSCO** y escribe la ubicación (ej. Caja 3).
+2. **Caja:** elige **POS** o **SSCO**, escribe la ubicación (ej. Caja 3) y el **N° de POS**.
    - POS: el propio POS, pantalla, segunda pantalla, impresora, gaveta, teclado, scanner de mano y scanner de mesón.
    - SSCO: el propio SSCO, pantalla, impresora, scanner de mesón y scanner de mano.
 3. En cada componente, toca la cámara junto a **Modelo** y **N° de serie** (o escríbelos). Deja vacío lo que la caja no tenga.

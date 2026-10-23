@@ -19,6 +19,7 @@ data class Caja(
     val region: String,
     val tipo: String,
     val ubicacion: String,
+    val numeroPos: String = "",
     val piezas: Map<String, Pieza>,
     val notas: String,
 ) {
@@ -26,7 +27,7 @@ data class Caja(
 
     /** Columnas en el mismo orden que la planilla Excel. */
     fun comoFila(numero: Int): List<String> {
-        val f = mutableListOf(numero.toString(), fecha, cliente, tienda, direccion, region, tipo, ubicacion)
+        val f = mutableListOf(numero.toString(), fecha, cliente, tienda, direccion, region, tipo, ubicacion, numeroPos)
         for (c in COMPONENTES) {
             f.add(pieza(c).modelo)
             f.add(pieza(c).serie)
@@ -57,7 +58,7 @@ data class Caja(
         fun etiqueta(nombre: String, tipo: String) = if (nombre == PRINCIPAL) tipo.ifEmpty { PRINCIPAL } else nombre
 
         val ENCABEZADO: List<String> by lazy {
-            val e = mutableListOf("N°", "Fecha", "Cliente", "N° Tienda", "Dirección", "Región", "Tipo", "Ubicación POS")
+            val e = mutableListOf("N°", "Fecha", "Cliente", "N° Tienda", "Dirección", "Región", "Tipo", "Ubicación POS", "N° POS")
             for (c in COMPONENTES) {
                 e.add("$c - Modelo")
                 e.add("$c - Serie")
@@ -67,7 +68,7 @@ data class Caja(
         }
 
         val ANCHOS: List<Int> by lazy {
-            val a = mutableListOf(6, 12, 16, 11, 34, 26, 8, 14)
+            val a = mutableListOf(6, 12, 16, 11, 34, 26, 8, 14, 9)
             repeat(COMPONENTES.size) { a.add(20); a.add(20) }
             a.add(30)
             a
@@ -110,6 +111,7 @@ class Almacen(context: Context) {
                         region = o.optString("region"),
                         tipo = o.optString("tipo"),
                         ubicacion = o.optString("ubicacion"),
+                        numeroPos = o.optString("numeroPos"),
                         piezas = piezas,
                         notas = o.optString("notas"),
                     )
@@ -137,6 +139,7 @@ class Almacen(context: Context) {
                     .put("region", c.region)
                     .put("tipo", c.tipo)
                     .put("ubicacion", c.ubicacion)
+                    .put("numeroPos", c.numeroPos)
                     .put("piezas", piezas)
                     .put("notas", c.notas)
             )
@@ -177,7 +180,7 @@ class Almacen(context: Context) {
 object Convertidor {
     fun desdeFilaVieja(
         id: Long, fecha: String, cliente: String, tienda: String, direccion: String, region: String,
-        tipoEquipo: String, modelo: String, serie: String, ubicacion: String, notas: String,
+        tipoEquipo: String, modelo: String, serie: String, ubicacion: String, notas: String, numeroPos: String = "",
     ): Caja {
         val comp = Caja.COMPONENTES.firstOrNull { it.equals(tipoEquipo.trim(), ignoreCase = true) }
         val esTipoCaja = tipoEquipo.trim().equals(Caja.SSCO, true) || tipoEquipo.trim().equals(Caja.POS, true)
@@ -195,7 +198,7 @@ object Convertidor {
         return Caja(
             id = id, fecha = fecha, cliente = cliente, tienda = tienda, direccion = direccion, region = region,
             tipo = if (tipoEquipo.trim().equals(Caja.SSCO, true)) Caja.SSCO else Caja.POS,
-            ubicacion = ubicacion, piezas = piezas, notas = notasFinal,
+            ubicacion = ubicacion, numeroPos = numeroPos, piezas = piezas, notas = notasFinal,
         )
     }
 }

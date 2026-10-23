@@ -395,6 +395,7 @@ class MainActivity : AppCompatActivity() {
         region = b.edtRegion.text?.toString()?.trim().orEmpty(),
         tipo = tipoActual(),
         ubicacion = b.edtUbicacion.text?.toString()?.trim().orEmpty(),
+        numeroPos = b.edtNumeroPos.text?.toString()?.trim().orEmpty(),
         piezas = leerPiezas().filterValues { !it.vacia() },
         notas = b.edtNotas.text?.toString()?.trim().orEmpty(),
     )
@@ -442,7 +443,7 @@ class MainActivity : AppCompatActivity() {
                 if (otra.id == c.id) continue
                 val hit = otra.piezas.entries.firstOrNull { it.value.serie.equals(p.serie, ignoreCase = true) }
                 if (hit != null) {
-                    resultado.add("${p.serie} ($nombre) · ya está en ${otra.tipo} ${otra.ubicacion}".trim())
+                    resultado.add("${p.serie} ($nombre) · ya está en ${otra.tipo} ${otra.numeroPos} ${otra.ubicacion}".replace(Regex(" +"), " ").trim())
                     break
                 }
             }
@@ -470,6 +471,7 @@ class MainActivity : AppCompatActivity() {
     /** Deja la tienda, la fecha y el tipo de caja para registrar la siguiente caja. */
     private fun limpiarCaja() {
         b.edtUbicacion.setText("")
+        b.edtNumeroPos.setText("")
         b.edtNotas.setText("")
         construirPiezas(tipoActual(), emptyMap())
         editandoId = null
@@ -493,6 +495,7 @@ class MainActivity : AppCompatActivity() {
         b.edtFecha.setText(c.fecha)
         ponerTipo(c.tipo, c.piezas)
         b.edtUbicacion.setText(c.ubicacion)
+        b.edtNumeroPos.setText(c.numeroPos)
         b.edtNotas.setText(c.notas)
         b.btnGuardar.text = "GUARDAR CAMBIOS"
         b.barEdicion.visibility = View.VISIBLE
@@ -707,7 +710,7 @@ class MainActivity : AppCompatActivity() {
         override fun onBindViewHolder(h: FilaVH, position: Int) {
             val c = filas[position]
             h.num.text = (position + 1).toString()
-            h.titulo.text = listOf(c.tipo, c.ubicacion).filter { it.isNotEmpty() }.joinToString(" · ")
+            h.titulo.text = listOf(c.tipo + (c.numeroPos.takeIf { it.isNotEmpty() }?.let { " N° $it" } ?: ""), c.ubicacion).filter { it.isNotEmpty() }.joinToString(" · ")
             h.codigos.text = Caja.COMPONENTES.mapNotNull { n ->
                 val p = c.piezas[n] ?: return@mapNotNull null
                 if (p.vacia()) null else "${Caja.etiqueta(n, c.tipo)}: " + listOf(p.modelo, p.serie.takeIf { it.isNotEmpty() }?.let { "S/N $it" } ?: "")
