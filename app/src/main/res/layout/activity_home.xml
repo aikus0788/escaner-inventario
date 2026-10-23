@@ -82,30 +82,53 @@
         </LinearLayout>
     </androidx.core.widget.NestedScrollView>
 
-    <!-- Pie: versión y actualizar -->
+    <!-- Pie: versión, actualizar y compartir la app -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:background="@color/blanco"
         android:elevation="8dp"
-        android:gravity="center_vertical"
-        android:orientation="horizontal"
+        android:orientation="vertical"
         android:paddingHorizontal="16dp"
-        android:paddingVertical="10dp">
+        android:paddingTop="8dp"
+        android:paddingBottom="12dp">
 
         <TextView
             android:id="@+id/txtVersion"
-            android:layout_width="0dp"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_weight="1"
+            android:gravity="center"
             android:textColor="@color/gris"
-            android:textSize="13sp" />
+            android:textSize="12sp" />
 
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/btnActualizar"
-            android:layout_width="wrap_content"
-            android:layout_height="48dp"
-            android:text="Buscar actualización"
-            app:cornerRadius="8dp" />
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:orientation="horizontal">
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnActualizar"
+                android:layout_width="0dp"
+                android:layout_height="52dp"
+                android:layout_marginEnd="6dp"
+                android:layout_weight="1"
+                android:text="Buscar actualización"
+                android:textSize="13sp"
+                app:cornerRadius="8dp" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnDescargaApp"
+                style="@style/Widget.Material3.Button.OutlinedButton"
+                android:layout_width="0dp"
+                android:layout_height="52dp"
+                android:layout_marginStart="6dp"
+                android:layout_weight="1"
+                android:text="Descarga app"
+                android:textColor="@color/verde"
+                android:textSize="13sp"
+                app:cornerRadius="8dp"
+                app:strokeColor="@color/verde" />
+        </LinearLayout>
     </LinearLayout>
 </LinearLayout>
