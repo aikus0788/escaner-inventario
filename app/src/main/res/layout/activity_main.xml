@@ -12,17 +12,41 @@
         android:background="@color/verde"
         android:gravity="center_vertical"
         android:orientation="horizontal"
-        android:paddingHorizontal="16dp"
-        android:paddingVertical="14dp">
+        android:paddingVertical="8dp"
+        android:paddingStart="4dp"
+        android:paddingEnd="16dp">
 
-        <TextView
+        <ImageButton
+            android:id="@+id/btnVolver"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="Volver a Infomaxis"
+            android:src="@drawable/ic_volver" />
+
+        <LinearLayout
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:text="Escáner de Inventario"
-            android:textColor="@color/blanco"
-            android:textSize="21sp"
-            android:textStyle="bold" />
+            android:orientation="vertical">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="INFOMAXIS"
+                android:textColor="@color/amarillo"
+                android:letterSpacing="0.12"
+                android:textSize="11sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Inventario equipos"
+                android:textColor="@color/blanco"
+                android:textSize="20sp"
+                android:textStyle="bold" />
+        </LinearLayout>
 
         <TextView
             android:id="@+id/txtCount"
@@ -31,25 +55,10 @@
             android:background="@color/amarillo"
             android:paddingHorizontal="8dp"
             android:paddingVertical="2dp"
-            android:text="0 filas"
+            android:text="0 cajas"
             android:textColor="@color/tinta"
             android:textSize="13sp"
             android:textStyle="bold" />
-
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/btnActualizar"
-            style="@style/Widget.Material3.Button.TextButton"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginStart="8dp"
-            android:minWidth="0dp"
-            android:paddingHorizontal="8dp"
-            android:text="Actualizar"
-            android:textColor="@color/blanco"
-            app:icon="@drawable/ic_update"
-            app:iconPadding="4dp"
-            app:iconSize="18dp"
-            app:iconTint="@color/blanco" />
     </LinearLayout>
 
     <androidx.core.widget.NestedScrollView

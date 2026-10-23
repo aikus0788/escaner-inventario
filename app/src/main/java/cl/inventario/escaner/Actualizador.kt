@@ -100,7 +100,7 @@ class Actualizador(private val activity: Activity) {
         if (Build.VERSION.SDK_INT >= 26 && !activity.packageManager.canRequestPackageInstalls()) {
             MaterialAlertDialogBuilder(activity)
                 .setTitle("Falta un permiso")
-                .setMessage("Para instalar la actualización, Android necesita que permitas a «Escáner Inventario» instalar apps.\n\nEn la pantalla que se abrirá, activa «Permitir de esta fuente», vuelve atrás y toca «Actualizar» otra vez.")
+                .setMessage("Para instalar la actualización, Android necesita que permitas a «Infomaxis» instalar apps.\n\nEn la pantalla que se abrirá, activa «Permitir de esta fuente», vuelve atrás y toca «Actualizar» otra vez.")
                 .setPositiveButton("Abrir ajustes") { _, _ ->
                     activity.startActivity(
                         Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:${activity.packageName}"))
@@ -131,7 +131,7 @@ class Actualizador(private val activity: Activity) {
         Thread {
             val carpeta = File(activity.cacheDir, "actualizacion").apply { mkdirs() }
             carpeta.listFiles()?.forEach { it.delete() }
-            val destino = File(carpeta, "EscanerInventario.apk")
+            val destino = File(carpeta, "Infomaxis.apk")
             val error = try {
                 val con = abrirSiguiendoRedirecciones(URL(v.url))
                 val total = con.contentLengthLong

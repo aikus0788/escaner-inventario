@@ -1,5 +1,5 @@
 <resources>
-    <style name="Theme.Escaner" parent="Theme.Material3.Light.NoActionBar">
+    <style name="Theme.Infomaxis" parent="Theme.Material3.Light.NoActionBar">
         <item name="colorPrimary">@color/verde</item>
         <item name="colorOnPrimary">@color/blanco</item>
         <item name="colorSecondary">@color/amarillo</item>

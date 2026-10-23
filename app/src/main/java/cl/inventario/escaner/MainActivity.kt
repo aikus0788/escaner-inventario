@@ -38,7 +38,6 @@ class MainActivity : AppCompatActivity() {
 
     private lateinit var b: ActivityMainBinding
     private lateinit var almacen: Almacen
-    private lateinit var actualizador: Actualizador
     private var filas = mutableListOf<Caja>()
     private var editandoId: Long? = null
 
@@ -91,7 +90,6 @@ class MainActivity : AppCompatActivity() {
         }
 
         almacen = Almacen(this)
-        actualizador = Actualizador(this)
         filas = almacen.cargar()
 
         // Cliente
@@ -122,18 +120,9 @@ class MainActivity : AppCompatActivity() {
         b.btnExportar.setOnClickListener { menuExportar() }
         b.btnNuevo.setOnClickListener { nuevoExcel() }
         b.btnCargar.setOnClickListener { cargarExcel() }
-        b.btnActualizar.setOnClickListener { actualizador.revisarYPreguntar() }
+        b.btnVolver.setOnClickListener { finish() }
 
         refrescar()
-
-        // Revisa en silencio si hay versión nueva y lo marca en el botón.
-        actualizador.buscar { v ->
-            if (v != null && v.codigo > actualizador.codigoInstalado()) {
-                b.btnActualizar.text = "Nueva versión"
-                b.btnActualizar.setTextColor(ContextCompat.getColor(this, R.color.amarillo))
-                b.btnActualizar.iconTint = ContextCompat.getColorStateList(this, R.color.amarillo)
-            }
-        }
     }
 
     override fun onSaveInstanceState(outState: Bundle) {

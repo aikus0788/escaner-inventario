@@ -25,14 +25,14 @@ jobs:
           STORE_PASSWORD: inventario123
         run: gradle assembleRelease --no-daemon --stacktrace -Pcompilacion=${{ github.run_number }}
       - name: Renombrar APK
-        run: cp app/build/outputs/apk/release/app-release.apk EscanerInventario.apk
+        run: cp app/build/outputs/apk/release/app-release.apk Infomaxis.apk
       - uses: actions/upload-artifact@v4
         with:
-          name: EscanerInventario
-          path: EscanerInventario.apk
+          name: Infomaxis
+          path: Infomaxis.apk
       - name: Publicar descarga
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.2.${{ github.run_number }}
-          name: Escáner de Inventario v1.2.${{ github.run_number }}
-          files: EscanerInventario.apk
+          tag_name: v2.0.${{ github.run_number }}
+          name: Infomaxis v2.0.${{ github.run_number }}
+          files: Infomaxis.apk

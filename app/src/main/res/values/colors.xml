@@ -1,11 +1,13 @@
 <resources>
-    <color name="verde">#1F5F4F</color>
-    <color name="verde_oscuro">#16463A</color>
-    <color name="amarillo">#F2B705</color>
-    <color name="tinta">#1D2321</color>
-    <color name="fondo">#EEF0EE</color>
+    <!-- Colores de marca Infomaxis (logo IMX). Los nombres se mantienen por compatibilidad. -->
+    <color name="verde">#0832D6</color>
+    <color name="verde_oscuro">#0626A3</color>
+    <color name="amarillo">#F0960A</color>
+    <color name="naranja">#F06414</color>
+    <color name="tinta">#1B1F2A</color>
+    <color name="fondo">#F1F2F6</color>
     <color name="blanco">#FFFFFF</color>
-    <color name="gris">#5D6763</color>
-    <color name="linea">#D4D9D6</color>
+    <color name="gris">#5C6170</color>
+    <color name="linea">#D6D9E2</color>
     <color name="rojo">#B3261E</color>
 </resources>

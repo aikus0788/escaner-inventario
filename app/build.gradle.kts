@@ -14,7 +14,7 @@ android {
         // GitHub Actions pasa el número de compilación; así cada versión publicada es mayor que la anterior.
         val compilacion = (project.findProperty("compilacion") as String?)?.toIntOrNull() ?: 2
         versionCode = compilacion
-        versionName = "1.2.$compilacion"
+        versionName = "2.0.$compilacion"
     }
 
     // Llave de firma fija: así cada versión nueva se instala encima de la anterior sin perder datos.
