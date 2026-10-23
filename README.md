@@ -41,11 +41,11 @@ GitHub Actions compila la APK en cada cambio a `main` (ver `.github/workflows/bu
 
 ## Módulo Drive
 
-La app no guarda contraseñas. Se conecta al Drive a través de un script de Google (`servidor-drive/Codigo.gs`)
-instalado en la cuenta de la empresa, que solo responde a teléfonos aprobados por el administrador.
+Al entrar, se inicia sesión con la cuenta de Google de la empresa (ventana oficial de Google) y se busca en su Drive
+con permiso de **solo lectura**. Requiere registrar la app una vez en Google Cloud:
 
-1. Con la cuenta de la empresa, entra a https://script.google.com → **Nuevo proyecto**, pega `servidor-drive/Codigo.gs` y guarda.
-2. **Implementar → Nueva implementación → Aplicación web**. Ejecutar como: **Yo**. Quién tiene acceso: **Cualquier usuario**.
-3. Autoriza los permisos y copia la URL que termina en `/exec`.
-4. Pon esa URL en `config/servidor-drive.txt` (la app la lee sola) o pégala en la app la primera vez.
-5. Cada teléfono pide acceso desde el módulo; al administrador le llega un correo con **Aprobar** / **Rechazar**.
+1. https://console.cloud.google.com con la cuenta de la empresa → crear proyecto «Infomaxis».
+2. Activar **Google Drive API**.
+3. Pantalla de consentimiento: tipo **Externo**, en **Prueba**, y agregar como usuarios de prueba las cuentas que iniciarán sesión.
+4. Credenciales → **ID de cliente de OAuth** → **Android**: paquete `cl.inventario.escaner`,
+   SHA-1 `BA:7F:54:EA:EC:A2:F5:A3:E5:68:1F:C6:17:BA:E1:7B:D6:3C:9A:65`.

@@ -42,12 +42,8 @@ object Modulos {
             icono = R.drawable.ic_mod_drive,
             pantalla = DriveActivity::class.java,
             resumen = { ctx ->
-                when (ServidorDrive(ctx).estado) {
-                    "aprobado" -> "Acceso aprobado"
-                    "pendiente" -> "Esperando aprobación"
-                    "rechazado" -> "Sin acceso"
-                    else -> "Requiere aprobación del administrador"
-                }
+                val correo = ctx.getSharedPreferences("drive", Context.MODE_PRIVATE).getString("correo", "").orEmpty()
+                if (correo.isEmpty()) "Inicia sesión con Google" else "Conectado: $correo"
             },
         ),
     )

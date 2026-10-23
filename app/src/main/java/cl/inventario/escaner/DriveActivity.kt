@@ -2,6 +2,7 @@ package cl.inventario.escaner
 
 import android.content.ActivityNotFoundException
 import android.content.ContentValues
+import android.content.Context
 import android.content.Intent
 import android.content.res.ColorStateList
 import android.graphics.Color
@@ -10,7 +11,6 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Environment
 import android.provider.MediaStore
-import android.util.Base64
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -20,37 +20,40 @@ import android.webkit.MimeTypeMap
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
+import androidx.activity.result.IntentSenderRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.FileProvider
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
+import cl.inventario.escaner.DriveApi.ErrorDrive
+import cl.inventario.escaner.DriveApi.Item
 import cl.inventario.escaner.databinding.ActivityDriveBinding
+import com.google.android.gms.auth.GoogleAuthUtil
+import com.google.android.gms.auth.api.identity.AuthorizationRequest
+import com.google.android.gms.auth.api.identity.Identity
+import com.google.android.gms.common.api.ApiException
+import com.google.android.gms.common.api.CommonStatusCodes
+import com.google.android.gms.common.api.Scope
+import com.google.android.gms.tasks.Tasks
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
-import org.json.JSONArray
-import org.json.JSONObject
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Locale
 import java.util.TimeZone
 
-/** Módulo Drive: busca en el Drive de la empresa y abre o descarga los archivos. */
+/** Módulo Drive: inicia sesión con Google, busca en el Drive y abre o descarga los archivos. */
 class DriveActivity : AppCompatActivity() {
 
     private lateinit var b: ActivityDriveBinding
-    private lateinit var servidor: ServidorDrive
+    private val prefs by lazy { getSharedPreferences("drive", Context.MODE_PRIVATE) }
 
-    data class Item(
-        val id: String,
-        val nombre: String,
-        val tipo: String,
-        val tamano: Long,
-        val modificado: String,
-        val url: String,
-        val carpeta: String,
-    ) {
-        val esCarpeta get() = tipo == "carpeta"
-    }
+    private val solicitud = AuthorizationRequest.builder()
+        .setRequestedScopes(listOf(Scope("https://www.googleapis.com/auth/drive.readonly")))
+        .build()
+
+    @Volatile private var token: String? = null
 
     /** Lo que se ve en la lista: los resultados de la búsqueda o el contenido de una carpeta. */
     private class Vista(val titulo: String, val items: List<Item>, val info: String)
@@ -59,19 +62,24 @@ class DriveActivity : AppCompatActivity() {
     private var items: List<Item> = emptyList()
     private var ocupado = false
 
+    private val pantallaGoogle = registerForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) { res ->
+        try {
+            val r = Identity.getAuthorizationClient(this).getAuthorizationResultFromIntent(res.data)
+            val t = r.accessToken
+            if (t != null) conectado(t) else mostrarLogin("Google no entregó el acceso. Inténtalo de nuevo.")
+        } catch (e: ApiException) {
+            mostrarLogin(mensajeGoogle(e))
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         b = ActivityDriveBinding.inflate(layoutInflater)
         setContentView(b.root)
-        servidor = ServidorDrive(this)
 
         b.btnVolver.setOnClickListener { finish() }
-        b.btnGuardarUrl.setOnClickListener { guardarUrl() }
-        b.btnSolicitar.setOnClickListener { solicitar() }
-        b.btnRevisar.setOnClickListener { revisarEstado(mostrarAviso = true) }
-        b.btnCambiarServidor.setOnClickListener { mostrar(Panel.CONFIG) }
-        b.edtNombre.setText(servidor.nombre)
-        b.edtUrl.setText(servidor.url)
+        b.btnLogin.setOnClickListener { iniciarSesion() }
+        b.btnSalir.setOnClickListener { confirmarSalir() }
 
         b.lista.layoutManager = LinearLayoutManager(this)
         b.lista.adapter = adaptador
@@ -87,165 +95,179 @@ class DriveActivity : AppCompatActivity() {
             }
         })
 
-        iniciar()
+        if (prefs.getString("correo", "").isNullOrEmpty()) mostrarLogin(null) else reconectarEnSilencio()
     }
 
-    override fun onResume() {
-        super.onResume()
-        if (servidor.estado == "pendiente" && servidor.url.isNotBlank()) revisarEstado(mostrarAviso = false)
+    // ---------------- Sesión de Google ----------------
+
+    private fun mostrarLogin(error: String?) {
+        b.panelLogin.visibility = View.VISIBLE
+        b.panelBuscar.visibility = View.GONE
+        if (error != null) {
+            MaterialAlertDialogBuilder(this)
+                .setTitle("No se pudo iniciar sesión")
+                .setMessage(error)
+                .setPositiveButton("Entendido", null)
+                .show()
+        }
     }
 
-    // ---------------- Estados de la pantalla ----------------
-
-    private enum class Panel { CONFIG, ACCESO, BUSCAR }
-
-    private fun mostrar(p: Panel) {
-        b.panelConfig.visibility = if (p == Panel.CONFIG) View.VISIBLE else View.GONE
-        b.panelAcceso.visibility = if (p == Panel.ACCESO) View.VISIBLE else View.GONE
-        b.panelBuscar.visibility = if (p == Panel.BUSCAR) View.VISIBLE else View.GONE
-        if (p == Panel.BUSCAR && pila.isEmpty()) {
+    private fun mostrarBuscador() {
+        b.panelLogin.visibility = View.GONE
+        b.panelBuscar.visibility = View.VISIBLE
+        b.txtCuenta.text = "Conectado: " + prefs.getString("correo", "").orEmpty()
+        if (pila.isEmpty()) {
             b.txtVacio.visibility = View.VISIBLE
             b.txtInfo.text = ""
         }
     }
 
+    /** Abre la ventana de Google para elegir o agregar la cuenta. */
+    private fun iniciarSesion() {
+        cargando(true)
+        Identity.getAuthorizationClient(this).authorize(solicitud)
+            .addOnSuccessListener { r ->
+                cargando(false)
+                val pi = r.pendingIntent
+                if (r.hasResolution() && pi != null) {
+                    pantallaGoogle.launch(IntentSenderRequest.Builder(pi.intentSender).build())
+                } else {
+                    r.accessToken?.let { conectado(it) } ?: mostrarLogin("Google no entregó el acceso. Inténtalo de nuevo.")
+                }
+            }
+            .addOnFailureListener { e ->
+                cargando(false)
+                mostrarLogin(if (e is ApiException) mensajeGoogle(e) else (e.message ?: "Error desconocido"))
+            }
+    }
+
+    private fun mensajeGoogle(e: ApiException): String = when (e.statusCode) {
+        CommonStatusCodes.CANCELED -> "Cancelaste el inicio de sesión."
+        CommonStatusCodes.NETWORK_ERROR -> "No hay conexión a internet."
+        CommonStatusCodes.DEVELOPER_ERROR ->
+            "La app todavía no está registrada en Google Cloud para acceder al Drive. " +
+                "Falta el paso de configuración del administrador (código 10)."
+        else -> "Google respondió con el código ${e.statusCode}. ${e.message.orEmpty()}"
+    }
+
+    private fun conectado(t: String) {
+        token = t
+        enSegundoPlano(
+            { DriveApi.correo(t) },
+            { correo ->
+                prefs.edit().putString("correo", correo).apply()
+                mostrarBuscador()
+                aviso("Conectado como $correo")
+            },
+            { e -> manejarError(e) },
+        )
+    }
+
+    /** Si ya se había iniciado sesión antes, pide un token nuevo sin mostrar nada. */
+    private fun reconectarEnSilencio() {
+        mostrarBuscador()
+        enSegundoPlano(
+            { tokenSilencioso() },
+            { t -> token = t },
+            { e -> manejarError(e) },
+        )
+    }
+
+    /** Se llama en segundo plano. */
+    private fun tokenSilencioso(): String {
+        val r = try {
+            Tasks.await(Identity.getAuthorizationClient(this).authorize(solicitud))
+        } catch (e: Exception) {
+            throw ErrorDrive("LOGIN", "Vuelve a iniciar sesión con Google.")
+        }
+        if (r.hasResolution()) throw ErrorDrive("LOGIN", "Vuelve a iniciar sesión con Google.")
+        return r.accessToken ?: throw ErrorDrive("LOGIN", "Vuelve a iniciar sesión con Google.")
+    }
+
+    /** Ejecuta una llamada a Drive con el token; si venció, pide otro y reintenta una vez. */
+    private fun <T> conToken(trabajo: (String) -> T): T {
+        val t = token ?: tokenSilencioso().also { token = it }
+        return try {
+            trabajo(t)
+        } catch (e: ErrorDrive) {
+            if (e.codigo != "TOKEN") throw e
+            try { GoogleAuthUtil.clearToken(this, t) } catch (_: Exception) {}
+            val nuevo = tokenSilencioso()
+            token = nuevo
+            trabajo(nuevo)
+        }
+    }
+
+    private fun confirmarSalir() {
+        MaterialAlertDialogBuilder(this)
+            .setTitle("¿Cerrar sesión de Google?")
+            .setMessage("La app dejará de tener acceso al Drive hasta que vuelvas a iniciar sesión.\n\n" +
+                "La cuenta de Google puede seguir agregada en el teléfono (Ajustes › Cuentas); quítala ahí si este teléfono no es tuyo.")
+            .setPositiveButton("Cerrar sesión") { _, _ -> salir() }
+            .setNegativeButton("Cancelar", null)
+            .show()
+    }
+
+    private fun salir() {
+        val t = token
+        enSegundoPlano(
+            {
+                if (t != null) {
+                    DriveApi.revocar(t)
+                    try { GoogleAuthUtil.clearToken(this, t) } catch (_: Exception) {}
+                }
+            },
+            {
+                token = null
+                prefs.edit().remove("correo").apply()
+                pila.clear()
+                pintar()
+                mostrarLogin(null)
+                aviso("Sesión cerrada")
+            },
+            { _ -> },
+        )
+    }
+
+    // ---------------- Trabajo en segundo plano ----------------
+
     private fun cargando(si: Boolean) {
         ocupado = si
         b.progreso.visibility = if (si) View.VISIBLE else View.INVISIBLE
-        b.btnSolicitar.isEnabled = !si
-        b.btnRevisar.isEnabled = !si
-        b.btnGuardarUrl.isEnabled = !si
+        b.btnLogin.isEnabled = !si
     }
 
-    private fun iniciar() {
-        if (servidor.url.isNotBlank()) {
-            if (servidor.estado == "aprobado") mostrar(Panel.BUSCAR) else revisarEstado(mostrarAviso = false)
-            return
-        }
-        // Primera vez: busca la dirección publicada por el administrador.
+    private fun <T> enSegundoPlano(trabajo: () -> T, ok: (T) -> Unit, error: (ErrorDrive) -> Unit) {
         cargando(true)
         Thread {
-            val u = servidor.buscarDireccionPublicada()
-            runOnUiThread {
-                cargando(false)
-                if (u != null) {
-                    servidor.url = u
-                    b.edtUrl.setText(u)
-                    revisarEstado(mostrarAviso = false)
-                } else {
-                    mostrar(Panel.CONFIG)
-                }
-            }
-        }.start()
-    }
-
-    private fun guardarUrl() {
-        val u = b.edtUrl.text?.toString()?.trim().orEmpty()
-        if (!u.startsWith("https://script.google.com/") || !u.contains("/exec")) {
-            aviso("La dirección debe empezar con https://script.google.com/ y terminar en /exec")
-            return
-        }
-        servidor.url = u
-        servidor.estado = ""
-        revisarEstado(mostrarAviso = false)
-    }
-
-    // ---------------- Acceso ----------------
-
-    private fun enSegundoPlano(trabajo: () -> JSONObject, ok: (JSONObject) -> Unit, error: (ServidorDrive.ErrorServidor) -> Unit) {
-        cargando(true)
-        Thread {
-            val r = try {
+            val r: Result<T> = try {
                 Result.success(trabajo())
-            } catch (e: ServidorDrive.ErrorServidor) {
+            } catch (e: ErrorDrive) {
                 Result.failure(e)
             } catch (e: Exception) {
-                Result.failure(ServidorDrive.ErrorServidor("ERROR", e.message ?: "Error desconocido"))
+                Result.failure(ErrorDrive("ERROR", e.message ?: "Error desconocido"))
             }
             runOnUiThread {
                 cargando(false)
-                r.fold(ok) { e -> error(e as ServidorDrive.ErrorServidor) }
+                r.fold(ok) { e -> error(e as ErrorDrive) }
             }
         }.start()
     }
 
-    private fun revisarEstado(mostrarAviso: Boolean) {
-        if (ocupado) return
-        enSegundoPlano(
-            { servidor.llamar(mapOf("accion" to "estado")) },
-            { o ->
-                val estado = o.optString("estado")
-                servidor.estado = estado
-                if (estado == "aprobado") {
-                    if (mostrarAviso) aviso("¡Acceso aprobado!")
-                    mostrar(Panel.BUSCAR)
-                } else {
-                    pantallaAcceso(estado)
-                    if (mostrarAviso && estado == "pendiente") aviso("Todavía no te aprueban.")
-                }
-            },
-            { e ->
-                if (e.codigo == "RESPUESTA" || e.codigo == "SIN_URL") mostrar(Panel.CONFIG) else pantallaAcceso(servidor.estado)
-                aviso(e.message ?: "")
-            },
-        )
-    }
-
-    private fun pantallaAcceso(estado: String) {
-        mostrar(Panel.ACCESO)
-        when (estado) {
-            "pendiente" -> {
-                b.txtAccesoTitulo.text = "Esperando aprobación"
-                b.txtAccesoMensaje.text = "Se envió la solicitud a nombre de ${servidor.nombre.ifEmpty { "este teléfono" }}. " +
-                    "Cuando el administrador la apruebe, toca «Revisar si ya me aprobaron»."
-                b.boxNombre.visibility = View.GONE
-                b.btnSolicitar.visibility = View.GONE
-                b.btnRevisar.visibility = View.VISIBLE
+    private fun manejarError(e: ErrorDrive) {
+        when (e.codigo) {
+            "LOGIN" -> {
+                token = null
+                mostrarLogin(null)
+                aviso("Vuelve a iniciar sesión con Google.")
             }
-            "rechazado" -> {
-                b.txtAccesoTitulo.text = "Sin acceso"
-                b.txtAccesoMensaje.text = "El administrador no aprobó este teléfono o le quitó el acceso. Si es un error, habla con él y vuelve a pedirlo."
-                b.boxNombre.visibility = View.VISIBLE
-                b.btnSolicitar.visibility = View.VISIBLE
-                b.btnSolicitar.text = "Pedir acceso otra vez"
-                b.btnRevisar.visibility = View.VISIBLE
-            }
-            else -> {
-                b.txtAccesoTitulo.text = "Pide acceso al Drive"
-                b.txtAccesoMensaje.text = "Para buscar en el Drive de la empresa, el administrador debe aprobar este teléfono. Le llegará un correo para hacerlo."
-                b.boxNombre.visibility = View.VISIBLE
-                b.btnSolicitar.visibility = View.VISIBLE
-                b.btnSolicitar.text = "Solicitar acceso"
-                b.btnRevisar.visibility = View.GONE
-            }
+            "SIN_API" -> MaterialAlertDialogBuilder(this)
+                .setTitle("Falta un paso de configuración")
+                .setMessage(e.message)
+                .setPositiveButton("Entendido", null)
+                .show()
+            else -> aviso(e.message ?: "")
         }
-    }
-
-    private fun solicitar() {
-        val nombre = b.edtNombre.text?.toString()?.trim().orEmpty()
-        if (nombre.length < 3) {
-            b.boxNombre.error = "Escribe tu nombre para que el administrador sepa quién eres"
-            return
-        }
-        b.boxNombre.error = null
-        servidor.nombre = nombre
-        enSegundoPlano(
-            { servidor.llamar(mapOf("accion" to "solicitar", "nombre" to nombre, "modelo" to servidor.modeloTelefono)) },
-            { o ->
-                servidor.estado = o.optString("estado")
-                if (servidor.estado == "aprobado") mostrar(Panel.BUSCAR) else pantallaAcceso(servidor.estado)
-                if (servidor.estado == "pendiente") aviso("Solicitud enviada al administrador")
-            },
-            { e -> aviso(e.message ?: "") },
-        )
-    }
-
-    private fun sinAcceso(e: ServidorDrive.ErrorServidor): Boolean {
-        if (e.codigo != "NO_AUTORIZADO") return false
-        servidor.estado = "rechazado"
-        pila.clear()
-        pantallaAcceso("rechazado")
-        return true
     }
 
     // ---------------- Buscar y navegar ----------------
@@ -264,13 +286,12 @@ class DriveActivity : AppCompatActivity() {
         ocultarTeclado()
         b.txtInfo.text = "Buscando «$q» en todo el Drive…"
         enSegundoPlano(
-            { servidor.llamar(mapOf("accion" to "buscar", "q" to q), 90_000) },
-            { o ->
-                val lista = leerItems(o.optJSONArray("carpetas")) + leerItems(o.optJSONArray("archivos"))
+            { conToken { t -> DriveApi.buscar(t, q) } },
+            { (lista, hayMas) ->
                 val n = lista.size
                 val info = when {
                     n == 0 -> "No se encontró nada con «$q». Prueba con otra palabra."
-                    o.optBoolean("hayMas") -> "$n resultados para «$q» (hay más: escribe algo más específico)"
+                    hayMas -> "$n resultados para «$q» (hay más: escribe algo más específico)"
                     n == 1 -> "1 resultado para «$q»"
                     else -> "$n resultados para «$q»"
                 }
@@ -280,7 +301,7 @@ class DriveActivity : AppCompatActivity() {
             },
             { e ->
                 b.txtInfo.text = ""
-                if (!sinAcceso(e)) aviso(e.message ?: "")
+                manejarError(e)
             },
         )
     }
@@ -288,14 +309,13 @@ class DriveActivity : AppCompatActivity() {
     private fun abrirCarpeta(c: Item) {
         if (ocupado) return
         enSegundoPlano(
-            { servidor.llamar(mapOf("accion" to "carpeta", "carpeta" to c.id), 90_000) },
-            { o ->
-                val lista = leerItems(o.optJSONArray("carpetas")) + leerItems(o.optJSONArray("archivos"))
+            { conToken { t -> DriveApi.carpeta(t, c.id) } },
+            { lista ->
                 val info = if (lista.isEmpty()) "Carpeta vacía" else "${lista.size} elementos"
-                pila.addLast(Vista(o.optString("nombre", c.nombre), lista, info))
+                pila.addLast(Vista(c.nombre, lista, info))
                 pintar()
             },
-            { e -> if (!sinAcceso(e)) aviso(e.message ?: "") },
+            { e -> manejarError(e) },
         )
     }
 
@@ -319,22 +339,6 @@ class DriveActivity : AppCompatActivity() {
         b.btnAtrasCarpeta.text = if (pila.size == 2) "‹ Resultados" else "‹ Atrás"
     }
 
-    private fun leerItems(arr: JSONArray?): List<Item> {
-        if (arr == null) return emptyList()
-        return (0 until arr.length()).map { i ->
-            val o = arr.getJSONObject(i)
-            Item(
-                id = o.optString("id"),
-                nombre = o.optString("nombre"),
-                tipo = o.optString("tipo"),
-                tamano = o.optLong("tamano"),
-                modificado = o.optString("modificado"),
-                url = o.optString("url"),
-                carpeta = o.optString("carpeta"),
-            )
-        }
-    }
-
     // ---------------- Abrir y descargar ----------------
 
     private fun opciones(it: Item) {
@@ -353,6 +357,10 @@ class DriveActivity : AppCompatActivity() {
     }
 
     private fun abrirEnDrive(url: String) {
+        if (url.isBlank()) {
+            aviso("Este archivo no tiene link de Drive.")
+            return
+        }
         try {
             startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
         } catch (_: ActivityNotFoundException) {
@@ -364,86 +372,82 @@ class DriveActivity : AppCompatActivity() {
         if (ocupado) return
         val espera: AlertDialog = MaterialAlertDialogBuilder(this)
             .setTitle(if (abrir) "Abriendo…" else "Descargando…")
-            .setMessage(it.nombre + "\n\nLos archivos grandes pueden tardar un poco.")
+            .setMessage(it.nombre)
             .setCancelable(false)
             .show()
+        val carpeta = File(cacheDir, "drive").apply { mkdirs() }
+        carpeta.listFiles()?.forEach { f -> f.delete() }
         enSegundoPlano(
-            { servidor.llamar(mapOf("accion" to "archivo", "archivo" to it.id), 180_000) },
-            { o ->
-                espera.dismiss()
-                try {
-                    val bytes = Base64.decode(o.getString("base64"), Base64.DEFAULT)
-                    val nombre = nombreSeguro(o.optString("nombre", it.nombre))
-                    val mime = o.optString("tipo").ifBlank { mimeDe(nombre) }
-                    if (abrir) verArchivo(bytes, nombre, mime) else guardarEnDescargas(bytes, nombre, mime)
-                } catch (e: Exception) {
-                    aviso("No se pudo preparar el archivo: ${e.message}")
+            {
+                conToken { t ->
+                    DriveApi.descargar(t, it, carpeta) { pct ->
+                        runOnUiThread { espera.setMessage("${it.nombre}\n\n$pct %") }
+                    }
                 }
+            },
+            { (archivo, tipo) ->
+                espera.dismiss()
+                val mime = tipo.takeIf { t -> t.isNotBlank() && !t.startsWith("application/vnd.google-apps") } ?: mimeDe(archivo.name)
+                if (abrir) verArchivo(archivo, mime) else guardarEnDescargas(archivo, mime)
             },
             { e ->
                 espera.dismiss()
-                if (sinAcceso(e)) return@enSegundoPlano
-                if (e.codigo == "MUY_GRANDE" || e.codigo == "NO_CONVERTIBLE") {
-                    val url = e.datos?.optString("url").orEmpty().ifEmpty { it.url }
+                if (e.codigo == "MUY_GRANDE" || e.codigo == "NO_DESCARGABLE") {
                     MaterialAlertDialogBuilder(this)
-                        .setTitle(if (e.codigo == "MUY_GRANDE") "Archivo muy grande" else "No se puede abrir aquí")
-                        .setMessage(
-                            (if (e.codigo == "MUY_GRANDE") "Este archivo pesa más de 20 MB y no se puede traer por la app." else e.message) +
-                                "\n\nPuedes abrirlo en Google Drive (necesitas haber iniciado sesión con una cuenta que tenga acceso).",
-                        )
-                        .setPositiveButton("Abrir en Google Drive") { _, _ -> abrirEnDrive(url) }
+                        .setTitle("No se puede traer al teléfono")
+                        .setMessage(e.message + "\n\nPuedes abrirlo en Google Drive.")
+                        .setPositiveButton("Abrir en Google Drive") { _, _ -> abrirEnDrive(it.url) }
                         .setNegativeButton("Cerrar", null)
                         .show()
                 } else {
-                    aviso(e.message ?: "")
+                    manejarError(e)
                 }
             },
         )
     }
 
-    private fun verArchivo(bytes: ByteArray, nombre: String, mime: String) {
-        val carpeta = File(cacheDir, "drive").apply { mkdirs() }
-        carpeta.listFiles()?.forEach { f -> f.delete() }
-        val archivo = File(carpeta, nombre).apply { writeBytes(bytes) }
+    private fun verArchivo(archivo: File, mime: String) {
         val uri = FileProvider.getUriForFile(this, "$packageName.files", archivo)
         val intent = Intent(Intent.ACTION_VIEW).apply {
             setDataAndType(uri, mime)
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
-        try {
-            startActivity(Intent.createChooser(intent, "Abrir con…"))
-        } catch (_: ActivityNotFoundException) {
+        if (intent.resolveActivity(packageManager) == null) {
             MaterialAlertDialogBuilder(this)
                 .setTitle("No hay app para abrirlo")
                 .setMessage("Ninguna app del teléfono abre este tipo de archivo. Puedes guardarlo en Descargas.")
-                .setPositiveButton("Guardar en Descargas") { _, _ -> guardarEnDescargas(bytes, nombre, mime) }
+                .setPositiveButton("Guardar en Descargas") { _, _ -> guardarEnDescargas(archivo, mime) }
                 .setNegativeButton("Cerrar", null)
                 .show()
+            return
+        }
+        try {
+            startActivity(Intent.createChooser(intent, "Abrir con…"))
+        } catch (_: ActivityNotFoundException) {
+            aviso("Ninguna app del teléfono abre este tipo de archivo.")
         }
     }
 
-    private fun guardarEnDescargas(bytes: ByteArray, nombre: String, mime: String) {
+    private fun guardarEnDescargas(archivo: File, mime: String) {
         try {
             if (Build.VERSION.SDK_INT >= 29) {
                 val valores = ContentValues().apply {
-                    put(MediaStore.MediaColumns.DISPLAY_NAME, nombre)
+                    put(MediaStore.MediaColumns.DISPLAY_NAME, archivo.name)
                     put(MediaStore.MediaColumns.MIME_TYPE, mime)
                 }
                 val uri = contentResolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, valores)
                     ?: throw IllegalStateException("sin acceso a Descargas")
-                contentResolver.openOutputStream(uri)?.use { it.write(bytes) }
-                aviso("Guardado en Descargas: $nombre")
+                contentResolver.openOutputStream(uri)?.use { out -> archivo.inputStream().use { it.copyTo(out) } }
+                aviso("Guardado en Descargas: ${archivo.name}")
             } else {
                 val dir = getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS) ?: filesDir
-                File(dir, nombre).writeBytes(bytes)
+                archivo.copyTo(File(dir, archivo.name), overwrite = true)
                 aviso("Guardado en ${dir.absolutePath}")
             }
         } catch (e: Exception) {
             aviso("No se pudo guardar: ${e.message}")
         }
     }
-
-    private fun nombreSeguro(n: String) = n.replace(Regex("[\\\\/:*?\"<>|]"), "_").ifBlank { "archivo" }
 
     private fun mimeDe(nombre: String): String =
         MimeTypeMap.getSingleton().getMimeTypeFromExtension(nombre.substringAfterLast('.', "").lowercase())
@@ -462,11 +466,11 @@ class DriveActivity : AppCompatActivity() {
         ""
     }
 
-    private fun tamano(b: Long): String = when {
-        b <= 0 -> ""
-        b < 1024 -> "$b B"
-        b < 1024 * 1024 -> "${b / 1024} KB"
-        else -> "%.1f MB".format(b / 1048576.0)
+    private fun tamano(n: Long): String = when {
+        n <= 0 -> ""
+        n < 1024 -> "$n B"
+        n < 1024 * 1024 -> "${n / 1024} KB"
+        else -> "%.1f MB".format(n / 1048576.0)
     }
 
     /** Etiqueta y color según el tipo de archivo. */
