@@ -30,6 +30,14 @@
             android:parentActivityName=".HomeActivity"
             android:windowSoftInputMode="adjustResize" />
 
+        <!-- Módulo: Drive -->
+        <activity
+            android:name=".DriveActivity"
+            android:exported="false"
+            android:label="Drive"
+            android:parentActivityName=".HomeActivity"
+            android:windowSoftInputMode="adjustResize" />
+
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.files"

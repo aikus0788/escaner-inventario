@@ -1,0 +1,2 @@
+# Dirección del servidor de Drive (URL de la aplicación web de Apps Script, termina en /exec).
+# La app la lee la primera vez que se abre el módulo Drive.

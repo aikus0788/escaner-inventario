@@ -5,6 +5,7 @@ App Android con varios **módulos**; cada uno es una herramienta distinta y se a
 | Módulo | Para qué sirve |
 |---|---|
 | Inventario equipos | Registrar cajas POS y SSCO con modelo y serie de cada componente, y exportarlas a Excel. |
+| Drive | Buscar en todo el Drive de la empresa y ver, descargar o abrir en Google Drive los archivos. |
 
 Para agregar un módulo: crea su Activity, regístrala en `AndroidManifest.xml` y agrégala a `Modulos.todos` (`Modulos.kt`).
 
@@ -37,3 +38,14 @@ Cada teléfono guarda su propia planilla.
 
 ## Compilar
 GitHub Actions compila la APK en cada cambio a `main` (ver `.github/workflows/build.yml`).
+
+## Módulo Drive
+
+La app no guarda contraseñas. Se conecta al Drive a través de un script de Google (`servidor-drive/Codigo.gs`)
+instalado en la cuenta de la empresa, que solo responde a teléfonos aprobados por el administrador.
+
+1. Con la cuenta de la empresa, entra a https://script.google.com → **Nuevo proyecto**, pega `servidor-drive/Codigo.gs` y guarda.
+2. **Implementar → Nueva implementación → Aplicación web**. Ejecutar como: **Yo**. Quién tiene acceso: **Cualquier usuario**.
+3. Autoriza los permisos y copia la URL que termina en `/exec`.
+4. Pon esa URL en `config/servidor-drive.txt` (la app la lee sola) o pégala en la app la primera vez.
+5. Cada teléfono pide acceso desde el módulo; al administrador le llega un correo con **Aprobar** / **Rechazar**.

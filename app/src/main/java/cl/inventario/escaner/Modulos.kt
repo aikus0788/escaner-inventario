@@ -36,5 +36,19 @@ object Modulos {
                 }
             },
         ),
+        Modulo(
+            titulo = "Drive",
+            descripcion = "Busca en todo el Drive de la empresa y abre o descarga los archivos en el teléfono.",
+            icono = R.drawable.ic_mod_drive,
+            pantalla = DriveActivity::class.java,
+            resumen = { ctx ->
+                when (ServidorDrive(ctx).estado) {
+                    "aprobado" -> "Acceso aprobado"
+                    "pendiente" -> "Esperando aprobación"
+                    "rechazado" -> "Sin acceso"
+                    else -> "Requiere aprobación del administrador"
+                }
+            },
+        ),
     )
 }
