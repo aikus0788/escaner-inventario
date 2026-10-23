@@ -38,13 +38,9 @@ object Modulos {
         ),
         Modulo(
             titulo = "Drive",
-            descripcion = "Busca en todo el Drive de la empresa y abre o descarga los archivos en el teléfono.",
+            descripcion = "Abre el Drive de la empresa en el navegador para buscar y descargar archivos.",
             icono = R.drawable.ic_mod_drive,
             pantalla = DriveActivity::class.java,
-            resumen = { ctx ->
-                val correo = ctx.getSharedPreferences("drive", Context.MODE_PRIVATE).getString("correo", "").orEmpty()
-                if (correo.isEmpty()) "Inicia sesión con Google" else "Conectado: $correo"
-            },
         ),
     )
 }

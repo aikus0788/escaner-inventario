@@ -5,7 +5,7 @@ App Android con varios **módulos**; cada uno es una herramienta distinta y se a
 | Módulo | Para qué sirve |
 |---|---|
 | Inventario equipos | Registrar cajas POS y SSCO con modelo y serie de cada componente, y exportarlas a Excel. |
-| Drive | Buscar en todo el Drive de la empresa y ver, descargar o abrir en Google Drive los archivos. |
+| Drive | Abrir el Drive de la empresa en el navegador para buscar y descargar archivos. |
 
 Para agregar un módulo: crea su Activity, regístrala en `AndroidManifest.xml` y agrégala a `Modulos.todos` (`Modulos.kt`).
 
@@ -41,11 +41,5 @@ GitHub Actions compila la APK en cada cambio a `main` (ver `.github/workflows/bu
 
 ## Módulo Drive
 
-Al entrar, se inicia sesión con la cuenta de Google de la empresa (ventana oficial de Google) y se busca en su Drive
-con permiso de **solo lectura**. Requiere registrar la app una vez en Google Cloud:
-
-1. https://console.cloud.google.com con la cuenta de la empresa → crear proyecto «Infomaxis».
-2. Activar **Google Drive API**.
-3. Pantalla de consentimiento: tipo **Externo**, en **Prueba**, y agregar como usuarios de prueba las cuentas que iniciarán sesión.
-4. Credenciales → **ID de cliente de OAuth** → **Android**: paquete `cl.inventario.escaner`,
-   SHA-1 `BA:7F:54:EA:EC:A2:F5:A3:E5:68:1F:C6:17:BA:E1:7B:D6:3C:9A:65`.
+Botón **Iniciar Google**: abre el navegador del teléfono en el inicio de sesión de Google. Al ingresar con la cuenta
+de la empresa, el navegador queda en «Mi unidad» del Drive, donde se busca, se abre y se descarga.
