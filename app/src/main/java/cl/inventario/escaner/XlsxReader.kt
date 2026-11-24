@@ -307,6 +307,8 @@ object XlsxReader {
                         val texto = when (tipo) {
                             "s" -> crudo.trim().toIntOrNull()?.let { compartidos.getOrNull(it) } ?: ""
                             "b" -> if (crudo.trim() == "1") "VERDADERO" else "FALSO"
+                            // Texto escrito tal cual (conserva ceros a la izquierda: "05", "0512").
+                            "inlineStr", "str" -> crudo
                             else -> limpiarNumero(crudo)
                         }
                         if (texto.isNotEmpty()) filas.getOrPut(filaActual) { mutableMapOf() }[colActual] = texto
