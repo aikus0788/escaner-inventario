@@ -276,18 +276,138 @@
 
                     <TextView style="@style/Etiqueta" android:layout_marginTop="14dp" android:text="NOTAS" />
 
-                    <com.google.android.material.textfield.TextInputLayout
-                        style="@style/Widget.Material3.TextInputLayout.OutlinedBox"
+                    <LinearLayout
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:hint="Opcional">
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal">
 
-                        <com.google.android.material.textfield.TextInputEditText
-                            android:id="@+id/edtNotas"
-                            android:layout_width="match_parent"
+                        <com.google.android.material.textfield.TextInputLayout
+                            style="@style/Widget.Material3.TextInputLayout.OutlinedBox"
+                            android:layout_width="0dp"
                             android:layout_height="wrap_content"
-                            android:inputType="textCapSentences" />
-                    </com.google.android.material.textfield.TextInputLayout>
+                            android:layout_weight="1"
+                            android:hint="Opcional">
+
+                            <com.google.android.material.textfield.TextInputEditText
+                                android:id="@+id/edtNotas"
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:inputType="textCapSentences|textMultiLine" />
+                        </com.google.android.material.textfield.TextInputLayout>
+
+                        <com.google.android.material.button.MaterialButton
+                            android:id="@+id/btnFotoNotas"
+                            style="@style/BotonCamara"
+                            android:contentDescription="Foto para las notas (opcional)" />
+                    </LinearLayout>
+
+                    <LinearLayout
+                        android:id="@+id/filaNotas"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="6dp"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal"
+                        android:visibility="gone">
+
+                        <ImageView
+                            android:id="@+id/imgNotas"
+                            android:layout_width="72dp"
+                            android:layout_height="72dp"
+                            android:background="@color/linea"
+                            android:contentDescription="Foto de las notas"
+                            android:scaleType="centerCrop" />
+
+                        <TextView
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_marginStart="10dp"
+                            android:layout_weight="1"
+                            android:text="📷 Foto guardada.\nTócala para verla en grande."
+                            android:textColor="@color/verde"
+                            android:textSize="13sp" />
+
+                        <com.google.android.material.button.MaterialButton
+                            android:id="@+id/btnQuitarNotas"
+                            style="@style/Widget.Material3.Button.TextButton"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="Quitar"
+                            android:textColor="@color/rojo" />
+                    </LinearLayout>
+
+                    <TextView style="@style/Etiqueta" android:layout_marginTop="16dp" android:text="ESTADO DEL POS" />
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal">
+
+                        <com.google.android.material.textfield.TextInputLayout
+                            style="@style/Widget.Material3.TextInputLayout.OutlinedBox"
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:hint="Observación: cómo quedó el POS">
+
+                            <com.google.android.material.textfield.TextInputEditText
+                                android:id="@+id/edtEstado"
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:inputType="textCapSentences|textMultiLine"
+                                android:minLines="2" />
+                        </com.google.android.material.textfield.TextInputLayout>
+
+                        <com.google.android.material.button.MaterialButton
+                            android:id="@+id/btnFotoEstado"
+                            style="@style/BotonCamara"
+                            android:contentDescription="Foto de evidencia del estado del POS" />
+                    </LinearLayout>
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="4dp"
+                        android:text="Saca una foto de cómo quedó el POS como evidencia."
+                        android:textColor="@color/gris"
+                        android:textSize="12sp" />
+
+                    <LinearLayout
+                        android:id="@+id/filaEstado"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="6dp"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal"
+                        android:visibility="gone">
+
+                        <ImageView
+                            android:id="@+id/imgEstado"
+                            android:layout_width="72dp"
+                            android:layout_height="72dp"
+                            android:background="@color/linea"
+                            android:contentDescription="Foto de evidencia del estado del POS"
+                            android:scaleType="centerCrop" />
+
+                        <TextView
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_marginStart="10dp"
+                            android:layout_weight="1"
+                            android:text="📷 Foto guardada.\nTócala para verla en grande."
+                            android:textColor="@color/verde"
+                            android:textSize="13sp" />
+
+                        <com.google.android.material.button.MaterialButton
+                            android:id="@+id/btnQuitarEstado"
+                            style="@style/Widget.Material3.Button.TextButton"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="Quitar"
+                            android:textColor="@color/rojo" />
+                    </LinearLayout>
 
                     <com.google.android.material.button.MaterialButton
                         android:id="@+id/btnGuardar"

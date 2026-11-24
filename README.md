@@ -29,7 +29,8 @@ Ve a **Releases** (columna derecha de esta página) y descarga `Infomaxis.apk`.
    - POS: el propio POS, pantalla, segunda pantalla, impresora, gaveta, teclado, scanner de mano y scanner de mesón.
    - SSCO: el propio SSCO, pantalla, impresora, scanner de mesón y scanner de mano.
 3. En cada componente, toca la cámara junto a **Modelo** y **N° de serie** (o escríbelos). Deja vacío lo que la caja no tenga.
-4. Toca **Guardar caja**: toda la caja queda en **una fila** del Excel.
+4. Opcional: escribe **Notas** (con foto) y el **Estado del POS** con una foto de evidencia.
+5. Toca **Guardar caja**: toda la caja queda en **una fila** del Excel.
 5. **Exportar Excel** → compartir a Drive / WhatsApp / correo, o guardar en Descargas.
 6. **Nuevo Excel** empieza una planilla vacía. **Cargar Excel** abre una planilla ya empezada para seguir llenándola.
 7. **Buscar actualización** (en la pantalla de inicio) busca una versión nueva, la descarga y la instala si confirmas.
@@ -43,3 +44,9 @@ GitHub Actions compila la APK en cada cambio a `main` (ver `.github/workflows/bu
 
 Botón **Iniciar Google**: abre el navegador del teléfono en el inicio de sesión de Google. Al ingresar con la cuenta
 de la empresa, el navegador queda en «Mi unidad» del Drive, donde se busca, se abre y se descarga.
+
+### Fotos en el Excel
+
+Cada foto que se saca en la app (modelo, serie, notas, estado del POS) se guarda achicada en el teléfono y va al Excel
+en la hoja **Fotos**, con su caja, campo y valor. En la hoja principal, la columna **Fotos** enlaza a las fotos de cada caja.
+Al **cargar** un Excel exportado por la app, las fotos vuelven a la app.

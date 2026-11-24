@@ -22,8 +22,29 @@ data class Caja(
     val numeroPos: String = "",
     val piezas: Map<String, Pieza>,
     val notas: String,
+    /** Observación de cómo quedó el POS. */
+    val estado: String = "",
+    /** Fotos de la caja: clave del campo ("Impresora|serie", "notas", "estado") → nombre del archivo guardado. */
+    val fotos: Map<String, String> = emptyMap(),
 ) {
     fun pieza(nombre: String) = piezas[nombre] ?: Pieza()
+
+    /** Fotos en el orden de las columnas, con el nombre legible del campo y el valor leído. */
+    fun fotosOrdenadas(): List<Triple<String, String, String>> {
+        val lista = mutableListOf<Triple<String, String, String>>()
+        for (c in COMPONENTES) {
+            for (campo in listOf("modelo", "serie")) {
+                val k = "$c|$campo"
+                fotos[k]?.let {
+                    val texto = etiqueta(c, tipo) + " - " + (if (campo == "modelo") "Modelo" else "Serie")
+                    lista.add(Triple(k, texto, if (campo == "modelo") pieza(c).modelo else pieza(c).serie))
+                }
+            }
+        }
+        fotos[FOTO_NOTAS]?.let { lista.add(Triple(FOTO_NOTAS, "Notas", notas)) }
+        fotos[FOTO_ESTADO]?.let { lista.add(Triple(FOTO_ESTADO, "Estado POS", estado)) }
+        return lista
+    }
 
     /** Columnas en el mismo orden que la planilla Excel. */
     fun comoFila(numero: Int): List<String> {
@@ -33,12 +54,17 @@ data class Caja(
             f.add(pieza(c).serie)
         }
         f.add(notas)
+        f.add(estado)
+        val n = fotos.size
+        f.add(if (n == 0) "" else if (n == 1) "Ver 1 foto" else "Ver $n fotos")
         return f
     }
 
     companion object {
         const val POS = "POS"
         const val SSCO = "SSCO"
+        const val FOTO_NOTAS = "notas"
+        const val FOTO_ESTADO = "estado"
 
         /** Orden de las columnas en el Excel (todas las cajas usan las mismas columnas). */
         /** El propio equipo POS o SSCO; en pantalla se muestra con el nombre del tipo de caja. */
@@ -64,6 +90,8 @@ data class Caja(
                 e.add("$c - Serie")
             }
             e.add("Notas")
+            e.add("Estado POS")
+            e.add("Fotos")
             e
         }
 
@@ -71,6 +99,8 @@ data class Caja(
             val a = mutableListOf(6, 12, 16, 11, 34, 26, 8, 14, 9)
             repeat(COMPONENTES.size) { a.add(20); a.add(20) }
             a.add(30)
+            a.add(34)
+            a.add(13)
             a
         }
     }
@@ -114,6 +144,9 @@ class Almacen(context: Context) {
                         numeroPos = o.optString("numeroPos"),
                         piezas = piezas,
                         notas = o.optString("notas"),
+                        estado = o.optString("estado"),
+                        fotos = o.optJSONObject("fotos")?.let { f -> f.keys().asSequence().associateWith { k -> f.optString(k) } }
+                            ?: emptyMap(),
                     )
                 )
             }
@@ -142,6 +175,8 @@ class Almacen(context: Context) {
                     .put("numeroPos", c.numeroPos)
                     .put("piezas", piezas)
                     .put("notas", c.notas)
+                    .put("estado", c.estado)
+                    .put("fotos", JSONObject(c.fotos))
             )
         }
         prefs.edit().putString("cajas", arr.toString()).apply()

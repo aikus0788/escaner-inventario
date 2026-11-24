@@ -20,6 +20,12 @@ jobs:
       - uses: gradle/actions/setup-gradle@v3
         with:
           gradle-version: "8.7"
+      - name: Probar Excel con fotos
+        run: gradle testDebugUnitTest --no-daemon --stacktrace -Pcompilacion=${{ github.run_number }}
+      - name: Revisar el Excel de prueba
+        run: |
+          pip install --quiet openpyxl pillow
+          python3 .github/scripts/validar_excel.py app/build/prueba-fotos.xlsx
       - name: Compilar
         env:
           STORE_PASSWORD: inventario123

@@ -46,6 +46,9 @@ class MainActivity : AppCompatActivity() {
     private var fotoUri: Uri? = null
     private val candidatos = mutableMapOf<String, List<String>>()
 
+    /** Fotos de la caja que se está llenando: clave del campo → archivo guardado. */
+    private val fotosForm = mutableMapOf<String, String>()
+
     /** Campos en pantalla de cada componente de la caja. */
     private class PiezaUI(
         val nombre: String,
@@ -72,13 +75,18 @@ class MainActivity : AppCompatActivity() {
 
     private val tomarFoto = registerForActivityResult(ActivityResultContracts.TakePicture()) { ok ->
         val uri = fotoUri
-        if (ok && uri != null) procesarFoto(uri, objetivo)
+        if (ok && uri != null) {
+            val k = objetivo
+            guardarFoto(k)
+            if (k != Caja.FOTO_NOTAS && k != Caja.FOTO_ESTADO) procesarFoto(uri, k)
+        }
     }
 
     private val abrirExcel = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) importar(uri)
     }
 
+    @Suppress("DEPRECATION")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         b = ActivityMainBinding.inflate(layoutInflater)
@@ -87,10 +95,26 @@ class MainActivity : AppCompatActivity() {
         savedInstanceState?.let {
             objetivo = it.getString("objetivo", "")
             fotoUri = it.getString("fotoUri")?.let { s -> Uri.parse(s) }
+            val guardadas = it.getSerializable("fotosForm") as? HashMap<*, *>
+            guardadas?.entries?.forEach { e ->
+                val k = e.key
+                val v = e.value
+                if (k is String && v is String) fotosForm[k] = v
+            }
         }
 
         almacen = Almacen(this)
         filas = almacen.cargar()
+        limpiarFotosHuerfanas()
+
+        // Fotos de notas y del estado del POS
+        b.btnFotoNotas.setOnClickListener { abrirCamara(Caja.FOTO_NOTAS) }
+        b.btnFotoEstado.setOnClickListener { abrirCamara(Caja.FOTO_ESTADO) }
+        b.imgNotas.setOnClickListener { fotosForm[Caja.FOTO_NOTAS]?.let { verFoto(it) } }
+        b.imgEstado.setOnClickListener { fotosForm[Caja.FOTO_ESTADO]?.let { verFoto(it) } }
+        b.btnQuitarNotas.setOnClickListener { fotosForm.remove(Caja.FOTO_NOTAS); actualizarVistaFotos() }
+        b.btnQuitarEstado.setOnClickListener { fotosForm.remove(Caja.FOTO_ESTADO); actualizarVistaFotos() }
+        actualizarVistaFotos()
 
         // Cliente
         clientes.forEach { c -> b.chipsCliente.addView(nuevoChip(c)) }
@@ -129,6 +153,7 @@ class MainActivity : AppCompatActivity() {
         super.onSaveInstanceState(outState)
         outState.putString("objetivo", objetivo)
         fotoUri?.let { outState.putString("fotoUri", it.toString()) }
+        outState.putSerializable("fotosForm", HashMap(fotosForm))
     }
 
     private fun nuevoChip(texto: String) = Chip(this).apply {
@@ -262,6 +287,13 @@ class MainActivity : AppCompatActivity() {
                 ui.modelo.setText(it.modelo)
                 ui.serie.setText(it.serie)
             }
+            for ((campo, st) in listOf(CAMPO_MODELO to ui.stModelo, CAMPO_SERIE to ui.stSerie)) {
+                if (fotosForm.containsKey(clave(nombre, campo))) {
+                    st.visibility = View.VISIBLE
+                    st.setTextColor(ContextCompat.getColor(this, R.color.verde))
+                    st.text = TEXTO_FOTO
+                }
+            }
             v.findViewById<MaterialButton>(R.id.btnFotoModelo).setOnClickListener { abrirCamara(clave(nombre, CAMPO_MODELO)) }
             v.findViewById<MaterialButton>(R.id.btnFotoSerie).setOnClickListener { abrirCamara(clave(nombre, CAMPO_SERIE)) }
             ui.stModelo.setOnClickListener { mostrarOpciones(clave(nombre, CAMPO_MODELO)) }
@@ -342,16 +374,16 @@ class MainActivity : AppCompatActivity() {
                 campo.setText(mejor)
                 st.setTextColor(ContextCompat.getColor(this, R.color.verde))
                 val origen = if (sugeridos.isNotEmpty()) "Texto leído" else "Código de barras leído"
-                st.text = if (opciones.size > 1) "✓ $origen. ¿No es el correcto? Toca aquí para elegir otro." else "✓ $origen. Revisa que esté correcto."
+                st.text = (if (opciones.size > 1) "✓ $origen. ¿No es el correcto? Toca aquí para elegir otro." else "✓ $origen. Revisa que esté correcto.") + marcaFoto(k)
             }
             opciones.isNotEmpty() -> {
                 st.setTextColor(ContextCompat.getColor(this, R.color.gris))
-                st.text = "Elige el valor correcto. Toca aquí para ver las opciones otra vez."
+                st.text = "Elige el valor correcto. Toca aquí para ver las opciones otra vez." + marcaFoto(k)
                 mostrarOpciones(k)
             }
             else -> {
                 st.setTextColor(ContextCompat.getColor(this, R.color.rojo))
-                st.text = "No se encontró texto ni código. Acerca la cámara, usa más luz o escríbelo a mano."
+                st.text = "No se encontró texto ni código. Acerca la cámara, usa más luz o escríbelo a mano." + marcaFoto(k)
             }
         }
     }
@@ -367,10 +399,84 @@ class MainActivity : AppCompatActivity() {
                 val (campo, st) = campoDe(k) ?: return@setItems
                 campo.setText(opciones[i])
                 st.setTextColor(ContextCompat.getColor(this, R.color.verde))
-                st.text = "✓ Valor elegido. Toca aquí para cambiarlo."
+                st.text = "✓ Valor elegido. Toca aquí para cambiarlo." + marcaFoto(k)
             }
             .setNegativeButton("Cancelar", null)
             .show()
+    }
+
+    // ---------------- Fotos guardadas ----------------
+
+    private fun marcaFoto(k: String) = if (fotosForm.containsKey(k)) "\n" + TEXTO_FOTO else ""
+
+    /** Guarda una copia de la foto recién sacada para el campo [k], para que vaya al Excel. */
+    private fun guardarFoto(k: String) {
+        val original = File(cacheDir, "foto_actual.jpg")
+        Thread {
+            val nombre = try { Fotos.guardarDesde(this, original) } catch (e: Exception) { null }
+            runOnUiThread {
+                if (nombre == null) {
+                    aviso("No se pudo guardar la foto. Sácala de nuevo.")
+                    return@runOnUiThread
+                }
+                fotosForm[k] = nombre
+                if (k == Caja.FOTO_NOTAS || k == Caja.FOTO_ESTADO) {
+                    actualizarVistaFotos()
+                } else {
+                    campoDe(k)?.second?.let { st ->
+                        st.visibility = View.VISIBLE
+                        if (st.text.isNullOrEmpty() || st.text.toString() == "Leyendo la foto…") {
+                            st.setTextColor(ContextCompat.getColor(this, R.color.verde))
+                            st.text = TEXTO_FOTO
+                        } else if (!st.text.contains(TEXTO_FOTO)) {
+                            st.text = st.text.toString() + "\n" + TEXTO_FOTO
+                        }
+                    }
+                }
+            }
+        }.start()
+    }
+
+    /** Muestra u oculta las miniaturas de las fotos de notas y estado del POS. */
+    private fun actualizarVistaFotos() {
+        val lado = (72 * resources.displayMetrics.density).toInt()
+        for ((k, fila, img) in listOf(
+            Triple(Caja.FOTO_NOTAS, b.filaNotas, b.imgNotas),
+            Triple(Caja.FOTO_ESTADO, b.filaEstado, b.imgEstado),
+        )) {
+            val nombre = fotosForm[k]
+            val bmp = nombre?.let { Fotos.miniatura(this, it, lado * 2) }
+            fila.visibility = if (bmp != null) View.VISIBLE else View.GONE
+            img.setImageBitmap(bmp)
+        }
+    }
+
+    private fun verFoto(nombre: String) {
+        try {
+            val uri = FileProvider.getUriForFile(this, "$packageName.files", Fotos.archivo(this, nombre))
+            startActivity(
+                Intent(Intent.ACTION_VIEW).apply {
+                    setDataAndType(uri, "image/jpeg")
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                },
+            )
+        } catch (e: Exception) {
+            aviso("No hay una app para ver fotos.")
+        }
+    }
+
+    /** Borra del teléfono las fotos que ya no pertenecen a ninguna caja. */
+    private fun limpiarFotosHuerfanas() {
+        val enUso = filas.flatMap { it.fotos.values } + fotosForm.values
+        try { Fotos.limpiarHuerfanas(this, enUso) } catch (_: Exception) {}
+    }
+
+    /** Fotos del formulario que corresponden a campos de este tipo de caja. */
+    private fun fotosValidas(tipo: String): Map<String, String> {
+        val comps = Caja.POR_TIPO[tipo].orEmpty()
+        return fotosForm.filterKeys { k ->
+            k == Caja.FOTO_NOTAS || k == Caja.FOTO_ESTADO || k.substringBefore('|') in comps
+        }
     }
 
     // ---------------- Guardar / editar ----------------
@@ -387,6 +493,8 @@ class MainActivity : AppCompatActivity() {
         numeroPos = b.edtNumeroPos.text?.toString()?.trim().orEmpty(),
         piezas = leerPiezas().filterValues { !it.vacia() },
         notas = b.edtNotas.text?.toString()?.trim().orEmpty(),
+        estado = b.edtEstado.text?.toString()?.trim().orEmpty(),
+        fotos = fotosValidas(tipoActual()),
     )
 
     private fun guardar() {
@@ -462,11 +570,15 @@ class MainActivity : AppCompatActivity() {
         b.edtUbicacion.setText("")
         b.edtNumeroPos.setText("")
         b.edtNotas.setText("")
+        b.edtEstado.setText("")
+        fotosForm.clear()
+        actualizarVistaFotos()
         construirPiezas(tipoActual(), emptyMap())
         editandoId = null
         b.btnGuardar.text = "GUARDAR CAJA"
         b.barEdicion.visibility = View.GONE
         refrescar()
+        limpiarFotosHuerfanas()
     }
 
     private fun terminarEdicion() {
@@ -482,10 +594,14 @@ class MainActivity : AppCompatActivity() {
         editandoId = c.id
         ponerTienda(c.cliente, c.tienda, c.direccion, c.region)
         b.edtFecha.setText(c.fecha)
+        fotosForm.clear()
+        fotosForm.putAll(c.fotos)
         ponerTipo(c.tipo, c.piezas)
         b.edtUbicacion.setText(c.ubicacion)
         b.edtNumeroPos.setText(c.numeroPos)
         b.edtNotas.setText(c.notas)
+        b.edtEstado.setText(c.estado)
+        actualizarVistaFotos()
         b.btnGuardar.text = "GUARDAR CAMBIOS"
         b.barEdicion.visibility = View.VISIBLE
         refrescar()
@@ -556,8 +672,13 @@ class MainActivity : AppCompatActivity() {
         aviso("Leyendo el Excel…")
         Thread {
             val resultado = try {
-                val cajas = contentResolver.openInputStream(uri)?.use { XlsxReader.leerCajas(it) }
+                val leidas = contentResolver.openInputStream(uri)?.use { XlsxReader.leerCajas(it) }
                     ?: throw XlsxReader.FormatoNoValido("No se pudo abrir el archivo.")
+                // Las fotos que venían en el Excel vuelven a quedar guardadas en el teléfono.
+                val cajas = leidas.map { l ->
+                    if (l.fotos.isEmpty()) l.caja
+                    else l.caja.copy(fotos = l.fotos.mapValues { (_, bytes) -> Fotos.guardarBytes(this, bytes) })
+                }
                 Result.success(cajas)
             } catch (e: Exception) {
                 Result.failure(e)
@@ -608,7 +729,8 @@ class MainActivity : AppCompatActivity() {
         ponerTipo(ultima.tipo, emptyMap())
         recordarTienda()
         limpiarCaja()
-        aviso("Excel cargado: ${cajas.size} cajas. Puedes seguir agregando.")
+        val nFotos = cajas.sumOf { it.fotos.size }
+        aviso("Excel cargado: ${cajas.size} cajas" + (if (nFotos > 0) " y $nFotos fotos" else "") + ". Puedes seguir agregando.")
     }
 
     // ---------------- Exportar ----------------
@@ -639,50 +761,83 @@ class MainActivity : AppCompatActivity() {
         return "$base.xlsx"
     }
 
+    private fun textoCaja(c: Caja): String = listOf(
+        c.tipo + (c.numeroPos.takeIf { it.isNotEmpty() }?.let { " N° $it" } ?: ""),
+        c.ubicacion,
+        listOf(c.cliente, c.tienda).filter { it.isNotEmpty() }.joinToString(" "),
+    ).filter { it.isNotBlank() }.joinToString(" · ")
+
     private fun crearExcel(nombre: String): File {
         val carpeta = File(cacheDir, "excel").apply { mkdirs() }
         carpeta.listFiles()?.forEach { it.delete() }
         val archivo = File(carpeta, nombre)
+        val fotos = mutableListOf<XlsxWriter.FotoExcel>()
+        filas.forEachIndexed { i, c ->
+            for ((k, campo, valor) in c.fotosOrdenadas()) {
+                val f = c.fotos[k] ?: continue
+                fotos.add(XlsxWriter.FotoExcel(i + 1, textoCaja(c), campo, valor, k, Fotos.archivo(this, f)))
+            }
+        }
         XlsxWriter.escribir(
             archivo,
             Caja.ENCABEZADO,
             filas.mapIndexed { i, c -> c.comoFila(i + 1) },
             Caja.ANCHOS,
+            fotos,
+            Caja.ENCABEZADO.size - 1,
         )
         return archivo
     }
 
-    private fun compartir() {
-        try {
-            val archivo = crearExcel(nombreArchivo())
-            val uri = FileProvider.getUriForFile(this, "$packageName.files", archivo)
-            val intent = Intent(Intent.ACTION_SEND).apply {
-                type = MIME_XLSX
-                putExtra(Intent.EXTRA_STREAM, uri)
-                putExtra(Intent.EXTRA_SUBJECT, "Inventario de cajas")
-                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+    /** Arma el Excel en segundo plano (con muchas fotos puede tardar unos segundos). */
+    private fun prepararExcel(nombre: String, listo: (File) -> Unit) {
+        val espera = MaterialAlertDialogBuilder(this)
+            .setTitle("Preparando el Excel…")
+            .setMessage("Agregando ${filas.size} cajas y sus fotos.")
+            .setCancelable(false)
+            .show()
+        Thread {
+            val r = try { Result.success(crearExcel(nombre)) } catch (e: Exception) { Result.failure(e) }
+            runOnUiThread {
+                espera.dismiss()
+                r.fold(listo) { e -> aviso("No se pudo crear el Excel: ${e.message}") }
             }
-            startActivity(Intent.createChooser(intent, "Enviar Excel a…"))
-        } catch (e: Exception) {
-            aviso("No se pudo crear el Excel: ${e.message}")
+        }.start()
+    }
+
+    private fun compartir() {
+        prepararExcel(nombreArchivo()) { archivo ->
+            try {
+                val uri = FileProvider.getUriForFile(this, "$packageName.files", archivo)
+                val intent = Intent(Intent.ACTION_SEND).apply {
+                    type = MIME_XLSX
+                    putExtra(Intent.EXTRA_STREAM, uri)
+                    putExtra(Intent.EXTRA_SUBJECT, "Inventario de cajas")
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                }
+                startActivity(Intent.createChooser(intent, "Enviar Excel a…"))
+            } catch (e: Exception) {
+                aviso("No se pudo compartir el Excel: ${e.message}")
+            }
         }
     }
 
     private fun guardarEnDescargas() {
         if (Build.VERSION.SDK_INT < 29) return
-        try {
-            val nombre = nombreArchivo()
-            val archivo = crearExcel(nombre)
-            val valores = ContentValues().apply {
-                put(MediaStore.MediaColumns.DISPLAY_NAME, nombre)
-                put(MediaStore.MediaColumns.MIME_TYPE, MIME_XLSX)
+        val nombre = nombreArchivo()
+        prepararExcel(nombre) { archivo ->
+            try {
+                val valores = ContentValues().apply {
+                    put(MediaStore.MediaColumns.DISPLAY_NAME, nombre)
+                    put(MediaStore.MediaColumns.MIME_TYPE, MIME_XLSX)
+                }
+                val uri = contentResolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, valores)
+                    ?: throw IllegalStateException("sin acceso a Descargas")
+                contentResolver.openOutputStream(uri)?.use { out -> archivo.inputStream().use { it.copyTo(out) } }
+                aviso("Guardado en Descargas: $nombre")
+            } catch (e: Exception) {
+                aviso("No se pudo guardar en Descargas: ${e.message}")
             }
-            val uri = contentResolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, valores)
-                ?: throw IllegalStateException("sin acceso a Descargas")
-            contentResolver.openOutputStream(uri)?.use { out -> archivo.inputStream().use { it.copyTo(out) } }
-            aviso("Guardado en Descargas: $nombre")
-        } catch (e: Exception) {
-            aviso("No se pudo guardar en Descargas: ${e.message}")
         }
     }
 
@@ -707,7 +862,9 @@ class MainActivity : AppCompatActivity() {
             }.joinToString("\n").ifEmpty { "Sin componentes" }
             val tienda = listOf(c.cliente, c.tienda.takeIf { it.isNotEmpty() }?.let { "N° $it" } ?: "")
                 .filter { it.isNotEmpty() }.joinToString(" ")
-            h.detalle.text = listOf(tienda, c.fecha, c.notas).filter { it.isNotEmpty() }.joinToString(" · ")
+            val fotos = c.fotos.size.takeIf { it > 0 }?.let { "📷 $it" } ?: ""
+            h.detalle.text = listOf(tienda, c.fecha, fotos, c.notas, c.estado.takeIf { it.isNotEmpty() }?.let { "Estado: $it" } ?: "")
+                .filter { it.isNotEmpty() }.joinToString(" · ")
             h.itemView.setBackgroundColor(
                 ContextCompat.getColor(h.itemView.context, if (c.id == editandoId) R.color.linea else R.color.blanco)
             )
@@ -726,6 +883,7 @@ class MainActivity : AppCompatActivity() {
         const val CAMPO_MODELO = "modelo"
         const val CAMPO_SERIE = "serie"
         const val OTROS = "Otros"
+        const val TEXTO_FOTO = "📷 Foto guardada para el Excel"
         const val MIME_XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     }
 }
