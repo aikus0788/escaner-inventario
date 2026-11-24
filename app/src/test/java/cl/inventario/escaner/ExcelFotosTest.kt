@@ -6,35 +6,26 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
-import java.awt.Color
-import java.awt.image.BufferedImage
 import java.io.File
-import javax.imageio.ImageIO
 
 /** Exporta un Excel con fotos y lo vuelve a cargar: los datos y las fotos deben volver iguales. */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34])
 class ExcelFotosTest {
 
-    private fun jpeg(dir: File, nombre: String, w: Int, h: Int, color: Color): File {
-        val img = BufferedImage(w, h, BufferedImage.TYPE_INT_RGB)
-        val g = img.createGraphics()
-        g.color = color
-        g.fillRect(0, 0, w, h)
-        g.color = Color.BLACK
-        g.drawString("S/N TEST-$nombre", 10, 20)
-        g.dispose()
-        return File(dir, "$nombre.jpg").also { ImageIO.write(img, "jpg", it) }
+    /** Copia una foto de muestra (src/test/resources/fotos) a [dir]. */
+    private fun jpeg(dir: File, nombre: String): File {
+        val bytes = javaClass.classLoader!!.getResourceAsStream("fotos/$nombre.jpg")!!.use { it.readBytes() }
+        return File(dir, "$nombre.jpg").also { it.writeBytes(bytes) }
     }
 
     @Test
     fun exportarYCargarConFotos() {
-        System.setProperty("java.awt.headless", "true")
         val dir = File("build/prueba-fotos-media").apply { deleteRecursively(); mkdirs() }
-        val f1 = jpeg(dir, "pos-serie", 1280, 960, Color.ORANGE)
-        val f2 = jpeg(dir, "notas", 960, 1280, Color.CYAN)
-        val f3 = jpeg(dir, "estado", 1280, 720, Color.GREEN)
-        val f4 = jpeg(dir, "impresora-modelo", 800, 600, Color.PINK)
+        val f1 = jpeg(dir, "pos-serie")
+        val f2 = jpeg(dir, "notas")
+        val f3 = jpeg(dir, "estado")
+        val f4 = jpeg(dir, "impresora-modelo")
 
         assertEquals(1280 to 960, XlsxWriter.medidasJpeg(f1))
         assertEquals(960 to 1280, XlsxWriter.medidasJpeg(f2))
