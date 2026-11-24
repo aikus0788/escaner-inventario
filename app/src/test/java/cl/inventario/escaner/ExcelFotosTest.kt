@@ -54,6 +54,7 @@ class ExcelFotosTest {
         XlsxWriter.escribir(salida, Caja.ENCABEZADO, cajas.mapIndexed { i, c -> c.comoFila(i + 1) }, Caja.ANCHOS, fotos, Caja.ENCABEZADO.size - 1)
 
         val leidas = salida.inputStream().use { XlsxReader.leerCajas(it) }
+        leidas.forEach { println("LEIDA: ${it.caja} fotos=${it.fotos.keys}") }
         assertEquals(3, leidas.size)
         assertEquals("Operativo, limpio", leidas[0].caja.estado)
         assertEquals("Sin fotos", leidas[1].caja.estado)
