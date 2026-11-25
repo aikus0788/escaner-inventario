@@ -130,7 +130,19 @@ class MainActivity : AppCompatActivity() {
         b.chipsCliente.setOnCheckedStateChangeListener { _, _ -> actualizarCliente() }
 
         // Región y fecha
-        b.edtRegion.setSimpleItems(regiones)
+        // Región: se puede escribir una o más letras para filtrar la lista.
+        val listaRegiones = BuscadorLista(this, regiones.toList())
+        b.edtRegion.setAdapter(listaRegiones)
+        b.edtRegion.setOnClickListener { if (!b.edtRegion.isPopupShowing) b.edtRegion.showDropDown() }
+        b.edtRegion.setOnFocusChangeListener { _, conFoco ->
+            if (conFoco) {
+                b.edtRegion.post { if (b.edtRegion.text.isNullOrEmpty()) b.edtRegion.showDropDown() }
+            } else {
+                // Si lo escrito calza con una sola región, se completa el nombre.
+                listaRegiones.unicaCoincidencia(b.edtRegion.text?.toString().orEmpty())?.let { b.edtRegion.setText(it, false) }
+            }
+        }
+        b.edtRegion.setOnItemClickListener { _, _, _, _ -> b.edtRegion.clearFocus() }
         b.edtFecha.setText(formatoFecha.format(Date()))
         b.edtFecha.setOnClickListener { elegirFecha() }
         b.boxFecha.setEndIconOnClickListener { elegirFecha() }

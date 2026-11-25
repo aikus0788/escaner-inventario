@@ -169,13 +169,15 @@
                         style="@style/Widget.Material3.TextInputLayout.OutlinedBox.ExposedDropdownMenu"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:hint="Elige la región">
+                        android:hint="Escribe para buscar o elige la región">
 
                         <com.google.android.material.textfield.MaterialAutoCompleteTextView
                             android:id="@+id/edtRegion"
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
-                            android:inputType="none" />
+                            android:completionThreshold="1"
+                            android:imeOptions="actionDone"
+                            android:inputType="textCapWords|textNoSuggestions" />
                     </com.google.android.material.textfield.TextInputLayout>
 
                     <TextView style="@style/Etiqueta" android:layout_marginTop="14dp" android:text="FECHA" />
