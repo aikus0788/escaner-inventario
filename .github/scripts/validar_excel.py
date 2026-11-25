@@ -16,23 +16,26 @@ with zipfile.ZipFile(ruta) as z:
     medios = [n for n in z.namelist() if n.startswith("xl/media/")]
 
 wb = openpyxl.load_workbook(ruta)
-assert wb.sheetnames == ["Inventario", "Fotos"], wb.sheetnames
-inv, fot = wb["Inventario"], wb["Fotos"]
+assert wb.sheetnames == ["Inventario"], wb.sheetnames
+inv = wb["Inventario"]
 
 enc = [c.value for c in inv[1]]
-assert enc[-2:] == ["Estado POS", "Fotos"], enc[-3:]
-assert inv.cell(2, len(enc)).value == "Ver 3 fotos"
-assert inv.cell(2, len(enc)).hyperlink.location == "'Fotos'!A2"
-assert inv.cell(3, len(enc)).value is None
-assert inv.cell(2, len(enc) - 1).value == "Operativo, limpio"
+fotos = ["Foto: Serie del POS", "Foto: Cómo quedó el equipo", "Foto: Cableado del POS",
+         "Foto: Boleta POS certificado", "Foto: Adicional"]
+assert enc[-5:] == fotos, enc[-6:]
+assert enc[2] == "Trabajo" and inv.cell(2, 3).value == "Retiro" and inv.cell(4, 3).value == "Instalación"
+assert enc[-6] == "Estado POS" and inv.cell(2, len(enc) - 5).value == "Operativo, limpio"
+primera = len(enc) - 5  # índice (desde 0) de la primera columna de fotos
 
-assert [c.value for c in fot[1]] == ["N° caja", "Caja", "Foto de", "Valor", "Foto", "clave"]
-assert fot.column_dimensions["F"].hidden
-assert len(fot._images) == 4 == len(medios), (len(fot._images), medios)
-filas = sorted(img.anchor._from.row for img in fot._images)
-assert filas == [1, 2, 3, 4], filas
-assert fot["C2"].value == "POS - Serie" and fot["D2"].value == "41A2B3C", (fot["C2"].value, fot["D2"].value)
-assert fot["A2"].hyperlink.location == "'Inventario'!A2"
-assert fot["A5"].value == "3" and fot["F5"].value == "Impresora|modelo"
+assert len(inv._images) == 4 == len(medios), (len(inv._images), medios)
+anclas = sorted((img.anchor._from.row, img.anchor._from.col) for img in inv._images)
+esperadas = sorted([(1, primera), (1, primera + 1), (1, primera + 2), (3, primera + 4)])
+assert anclas == esperadas, (anclas, esperadas)
+# Celdas de fotos sin texto (en blanco).
+for fila in range(2, 5):
+    for col in range(primera + 1, primera + 6):
+        assert inv.cell(fila, col).value is None
+assert inv.row_dimensions[2].height and inv.row_dimensions[2].height > 100
+assert not inv.row_dimensions[3].height  # caja sin fotos: alto normal
 
-print("Excel de prueba OK:", len(fot._images), "fotos,", inv.max_row - 1, "cajas")
+print("Excel de prueba OK:", len(inv._images), "fotos,", inv.max_row - 1, "cajas")

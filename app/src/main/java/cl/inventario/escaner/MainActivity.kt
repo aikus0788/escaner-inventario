@@ -11,6 +11,7 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.EditText
+import android.widget.ImageView
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
@@ -46,8 +47,15 @@ class MainActivity : AppCompatActivity() {
     private var fotoUri: Uri? = null
     private val candidatos = mutableMapOf<String, List<String>>()
 
-    /** Fotos de la caja que se está llenando: clave del campo → archivo guardado. */
+    /** Las 5 fotos de la caja que se está llenando: clave de Caja.FOTOS_POS → archivo guardado. */
     private val fotosForm = mutableMapOf<String, String>()
+
+    /** «Retiro» o «Instalación»: se elige al entrar al módulo. */
+    private var trabajo = ""
+
+    /** Vista de cada uno de los 5 espacios de foto. */
+    private class FotoUI(val img: ImageView, val estado: TextView, val quitar: MaterialButton)
+    private val fotosUI = linkedMapOf<String, FotoUI>()
 
     /** Campos en pantalla de cada componente de la caja. */
     private class PiezaUI(
@@ -77,8 +85,8 @@ class MainActivity : AppCompatActivity() {
         val uri = fotoUri
         if (ok && uri != null) {
             val k = objetivo
-            guardarFoto(k)
-            if (k != Caja.FOTO_NOTAS && k != Caja.FOTO_ESTADO) procesarFoto(uri, k)
+            // Las 5 fotos del POS se guardan; las de modelo y serie solo se usan para leer el dato.
+            if (Caja.FOTOS_POS.any { it.first == k }) guardarFoto(k) else procesarFoto(uri, k)
         }
     }
 
@@ -95,6 +103,7 @@ class MainActivity : AppCompatActivity() {
         savedInstanceState?.let {
             objetivo = it.getString("objetivo", "")
             fotoUri = it.getString("fotoUri")?.let { s -> Uri.parse(s) }
+            trabajo = it.getString("trabajo", "")
             val guardadas = it.getSerializable("fotosForm") as? HashMap<*, *>
             guardadas?.entries?.forEach { e ->
                 val k = e.key
@@ -107,14 +116,14 @@ class MainActivity : AppCompatActivity() {
         filas = almacen.cargar()
         limpiarFotosHuerfanas()
 
-        // Fotos de notas y del estado del POS
-        b.btnFotoNotas.setOnClickListener { abrirCamara(Caja.FOTO_NOTAS) }
-        b.btnFotoEstado.setOnClickListener { abrirCamara(Caja.FOTO_ESTADO) }
-        b.imgNotas.setOnClickListener { fotosForm[Caja.FOTO_NOTAS]?.let { verFoto(it) } }
-        b.imgEstado.setOnClickListener { fotosForm[Caja.FOTO_ESTADO]?.let { verFoto(it) } }
-        b.btnQuitarNotas.setOnClickListener { fotosForm.remove(Caja.FOTO_NOTAS); actualizarVistaFotos() }
-        b.btnQuitarEstado.setOnClickListener { fotosForm.remove(Caja.FOTO_ESTADO); actualizarVistaFotos() }
+        // Las 5 fotos del POS
+        construirFotos()
         actualizarVistaFotos()
+
+        // Retiro o instalación: se elige cada vez que se entra al módulo.
+        b.txtTrabajo.setOnClickListener { elegirTrabajo(obligatorio = false) }
+        mostrarTrabajo()
+        if (trabajo.isEmpty()) b.root.post { elegirTrabajo(obligatorio = true) }
 
         // Cliente
         clientes.forEach { c -> b.chipsCliente.addView(nuevoChip(c)) }
@@ -154,6 +163,7 @@ class MainActivity : AppCompatActivity() {
         outState.putString("objetivo", objetivo)
         fotoUri?.let { outState.putString("fotoUri", it.toString()) }
         outState.putSerializable("fotosForm", HashMap(fotosForm))
+        outState.putString("trabajo", trabajo)
     }
 
     private fun nuevoChip(texto: String) = Chip(this).apply {
@@ -287,13 +297,7 @@ class MainActivity : AppCompatActivity() {
                 ui.modelo.setText(it.modelo)
                 ui.serie.setText(it.serie)
             }
-            for ((campo, st) in listOf(CAMPO_MODELO to ui.stModelo, CAMPO_SERIE to ui.stSerie)) {
-                if (fotosForm.containsKey(clave(nombre, campo))) {
-                    st.visibility = View.VISIBLE
-                    st.setTextColor(ContextCompat.getColor(this, R.color.verde))
-                    st.text = TEXTO_FOTO
-                }
-            }
+
             v.findViewById<MaterialButton>(R.id.btnFotoModelo).setOnClickListener { abrirCamara(clave(nombre, CAMPO_MODELO)) }
             v.findViewById<MaterialButton>(R.id.btnFotoSerie).setOnClickListener { abrirCamara(clave(nombre, CAMPO_SERIE)) }
             ui.stModelo.setOnClickListener { mostrarOpciones(clave(nombre, CAMPO_MODELO)) }
@@ -374,16 +378,16 @@ class MainActivity : AppCompatActivity() {
                 campo.setText(mejor)
                 st.setTextColor(ContextCompat.getColor(this, R.color.verde))
                 val origen = if (sugeridos.isNotEmpty()) "Texto leído" else "Código de barras leído"
-                st.text = (if (opciones.size > 1) "✓ $origen. ¿No es el correcto? Toca aquí para elegir otro." else "✓ $origen. Revisa que esté correcto.") + marcaFoto(k)
+                st.text = if (opciones.size > 1) "✓ $origen. ¿No es el correcto? Toca aquí para elegir otro." else "✓ $origen. Revisa que esté correcto."
             }
             opciones.isNotEmpty() -> {
                 st.setTextColor(ContextCompat.getColor(this, R.color.gris))
-                st.text = "Elige el valor correcto. Toca aquí para ver las opciones otra vez." + marcaFoto(k)
+                st.text = "Elige el valor correcto. Toca aquí para ver las opciones otra vez."
                 mostrarOpciones(k)
             }
             else -> {
                 st.setTextColor(ContextCompat.getColor(this, R.color.rojo))
-                st.text = "No se encontró texto ni código. Acerca la cámara, usa más luz o escríbelo a mano." + marcaFoto(k)
+                st.text = "No se encontró texto ni código. Acerca la cámara, usa más luz o escríbelo a mano."
             }
         }
     }
@@ -399,55 +403,76 @@ class MainActivity : AppCompatActivity() {
                 val (campo, st) = campoDe(k) ?: return@setItems
                 campo.setText(opciones[i])
                 st.setTextColor(ContextCompat.getColor(this, R.color.verde))
-                st.text = "✓ Valor elegido. Toca aquí para cambiarlo." + marcaFoto(k)
+                st.text = "✓ Valor elegido. Toca aquí para cambiarlo."
             }
             .setNegativeButton("Cancelar", null)
             .show()
     }
 
-    // ---------------- Fotos guardadas ----------------
+    // ---------------- Retiro o instalación ----------------
 
-    private fun marcaFoto(k: String) = if (fotosForm.containsKey(k)) "\n" + TEXTO_FOTO else ""
+    private fun elegirTrabajo(obligatorio: Boolean) {
+        val opciones = arrayOf(Caja.RETIRO, Caja.INSTALACION)
+        val d = MaterialAlertDialogBuilder(this)
+            .setTitle("¿Qué trabajo vas a hacer?")
+            .setItems(opciones) { _, i ->
+                trabajo = opciones[i]
+                mostrarTrabajo()
+                aviso("Trabajo: $trabajo")
+            }
+            .setCancelable(!obligatorio)
+        if (obligatorio) d.setNegativeButton("Volver al inicio") { _, _ -> finish() }
+        else d.setNegativeButton("Cancelar", null)
+        d.show()
+    }
 
-    /** Guarda una copia de la foto recién sacada para el campo [k], para que vaya al Excel. */
+    private fun mostrarTrabajo() {
+        b.txtTrabajo.text = if (trabajo.isEmpty()) "Elegir trabajo ▾" else "$trabajo ▾"
+    }
+
+    // ---------------- Fotos del POS ----------------
+
+    /** Arma los 5 espacios de foto: serie, equipo, cableado, boleta y adicional. */
+    private fun construirFotos() {
+        b.contenedorFotos.removeAllViews()
+        fotosUI.clear()
+        Caja.FOTOS_POS.forEachIndexed { i, (k, nombre) ->
+            val v = layoutInflater.inflate(R.layout.item_foto_pos, b.contenedorFotos, false)
+            v.findViewById<TextView>(R.id.txtTitulo).text = "${i + 1}. $nombre"
+            val ui = FotoUI(v.findViewById(R.id.imgFoto), v.findViewById(R.id.txtEstado), v.findViewById(R.id.btnQuitar))
+            v.findViewById<MaterialButton>(R.id.btnCamara).setOnClickListener { abrirCamara(k) }
+            ui.img.setOnClickListener { fotosForm[k]?.let { verFoto(it) } ?: abrirCamara(k) }
+            ui.quitar.setOnClickListener {
+                fotosForm.remove(k)
+                actualizarVistaFotos()
+            }
+            fotosUI[k] = ui
+            b.contenedorFotos.addView(v)
+        }
+    }
+
+    /** Guarda una copia achicada de la foto recién sacada en el espacio [k]. */
     private fun guardarFoto(k: String) {
         val original = File(cacheDir, "foto_actual.jpg")
+        fotosUI[k]?.estado?.text = "Guardando foto…"
         Thread {
             val nombre = try { Fotos.guardarDesde(this, original) } catch (e: Exception) { null }
             runOnUiThread {
-                if (nombre == null) {
-                    aviso("No se pudo guardar la foto. Sácala de nuevo.")
-                    return@runOnUiThread
-                }
-                fotosForm[k] = nombre
-                if (k == Caja.FOTO_NOTAS || k == Caja.FOTO_ESTADO) {
-                    actualizarVistaFotos()
-                } else {
-                    campoDe(k)?.second?.let { st ->
-                        st.visibility = View.VISIBLE
-                        if (st.text.isNullOrEmpty() || st.text.toString() == "Leyendo la foto…") {
-                            st.setTextColor(ContextCompat.getColor(this, R.color.verde))
-                            st.text = TEXTO_FOTO
-                        } else if (!st.text.contains(TEXTO_FOTO)) {
-                            st.text = st.text.toString() + "\n" + TEXTO_FOTO
-                        }
-                    }
-                }
+                if (nombre == null) aviso("No se pudo guardar la foto. Sácala de nuevo.") else fotosForm[k] = nombre
+                actualizarVistaFotos()
             }
         }.start()
     }
 
-    /** Muestra u oculta las miniaturas de las fotos de notas y estado del POS. */
+    /** Muestra la miniatura de cada foto o «Sin foto». */
     private fun actualizarVistaFotos() {
-        val lado = (72 * resources.displayMetrics.density).toInt()
-        for ((k, fila, img) in listOf(
-            Triple(Caja.FOTO_NOTAS, b.filaNotas, b.imgNotas),
-            Triple(Caja.FOTO_ESTADO, b.filaEstado, b.imgEstado),
-        )) {
-            val nombre = fotosForm[k]
-            val bmp = nombre?.let { Fotos.miniatura(this, it, lado * 2) }
-            fila.visibility = if (bmp != null) View.VISIBLE else View.GONE
-            img.setImageBitmap(bmp)
+        val lado = (64 * resources.displayMetrics.density).toInt()
+        for ((k, ui) in fotosUI) {
+            val bmp = fotosForm[k]?.let { Fotos.miniatura(this, it, lado * 2) }
+            ui.img.setImageBitmap(bmp)
+            ui.quitar.visibility = if (bmp != null) View.VISIBLE else View.GONE
+            ui.estado.setTextColor(ContextCompat.getColor(this, if (bmp != null) R.color.verde else R.color.gris))
+            ui.estado.text = if (bmp != null) "✓ Foto lista · tócala para verla" else "Sin foto"
         }
     }
 
@@ -471,12 +496,10 @@ class MainActivity : AppCompatActivity() {
         try { Fotos.limpiarHuerfanas(this, enUso) } catch (_: Exception) {}
     }
 
-    /** Fotos del formulario que corresponden a campos de este tipo de caja. */
-    private fun fotosValidas(tipo: String): Map<String, String> {
-        val comps = Caja.POR_TIPO[tipo].orEmpty()
-        return fotosForm.filterKeys { k ->
-            k == Caja.FOTO_NOTAS || k == Caja.FOTO_ESTADO || k.substringBefore('|') in comps
-        }
+    /** Fotos del formulario que corresponden a los 5 espacios. */
+    private fun fotosValidas(): Map<String, String> {
+        val claves = Caja.FOTOS_POS.map { it.first }.toSet()
+        return fotosForm.filterKeys { it in claves }
     }
 
     // ---------------- Guardar / editar ----------------
@@ -494,13 +517,19 @@ class MainActivity : AppCompatActivity() {
         piezas = leerPiezas().filterValues { !it.vacia() },
         notas = b.edtNotas.text?.toString()?.trim().orEmpty(),
         estado = b.edtEstado.text?.toString()?.trim().orEmpty(),
-        fotos = fotosValidas(tipoActual()),
+        fotos = fotosValidas(),
+        // Al editar, la caja conserva su trabajo original.
+        trabajo = filas.firstOrNull { it.id == id && editandoId != null }?.trabajo?.takeIf { it.isNotEmpty() } ?: trabajo,
     )
 
     private fun guardar() {
         val id = editandoId
         val c = leerFormulario(id ?: System.currentTimeMillis())
 
+        if (c.trabajo.isEmpty()) {
+            elegirTrabajo(obligatorio = false)
+            return
+        }
         if (c.tipo.isEmpty()) {
             aviso("Elige si la caja es POS o SSCO.")
             return
@@ -771,11 +800,11 @@ class MainActivity : AppCompatActivity() {
         val carpeta = File(cacheDir, "excel").apply { mkdirs() }
         carpeta.listFiles()?.forEach { it.delete() }
         val archivo = File(carpeta, nombre)
-        val fotos = mutableListOf<XlsxWriter.FotoExcel>()
+        val fotos = mutableListOf<XlsxWriter.FotoCelda>()
         filas.forEachIndexed { i, c ->
-            for ((k, campo, valor) in c.fotosOrdenadas()) {
-                val f = c.fotos[k] ?: continue
-                fotos.add(XlsxWriter.FotoExcel(i + 1, textoCaja(c), campo, valor, k, Fotos.archivo(this, f)))
+            Caja.FOTOS_POS.forEachIndexed { j, (k, nombre) ->
+                val f = c.fotos[k] ?: return@forEachIndexed
+                fotos.add(XlsxWriter.FotoCelda(i, Caja.PRIMERA_COLUMNA_FOTO + j, Fotos.archivo(this, f), "$nombre · ${textoCaja(c)}"))
             }
         }
         XlsxWriter.escribir(
@@ -784,7 +813,6 @@ class MainActivity : AppCompatActivity() {
             filas.mapIndexed { i, c -> c.comoFila(i + 1) },
             Caja.ANCHOS,
             fotos,
-            Caja.ENCABEZADO.size - 1,
         )
         return archivo
     }
@@ -854,7 +882,7 @@ class MainActivity : AppCompatActivity() {
         override fun onBindViewHolder(h: FilaVH, position: Int) {
             val c = filas[position]
             h.num.text = (position + 1).toString()
-            h.titulo.text = listOf(c.tipo + (c.numeroPos.takeIf { it.isNotEmpty() }?.let { " N° $it" } ?: ""), c.ubicacion).filter { it.isNotEmpty() }.joinToString(" · ")
+            h.titulo.text = listOf(c.trabajo, c.tipo + (c.numeroPos.takeIf { it.isNotEmpty() }?.let { " N° $it" } ?: ""), c.ubicacion).filter { it.isNotEmpty() }.joinToString(" · ")
             h.codigos.text = Caja.COMPONENTES.mapNotNull { n ->
                 val p = c.piezas[n] ?: return@mapNotNull null
                 if (p.vacia()) null else "${Caja.etiqueta(n, c.tipo)}: " + listOf(p.modelo, p.serie.takeIf { it.isNotEmpty() }?.let { "S/N $it" } ?: "")
@@ -883,7 +911,6 @@ class MainActivity : AppCompatActivity() {
         const val CAMPO_MODELO = "modelo"
         const val CAMPO_SERIE = "serie"
         const val OTROS = "Otros"
-        const val TEXTO_FOTO = "📷 Foto guardada para el Excel"
         const val MIME_XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     }
 }

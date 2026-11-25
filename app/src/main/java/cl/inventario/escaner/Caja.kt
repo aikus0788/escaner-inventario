@@ -24,47 +24,41 @@ data class Caja(
     val notas: String,
     /** Observación de cómo quedó el POS. */
     val estado: String = "",
-    /** Fotos de la caja: clave del campo ("Impresora|serie", "notas", "estado") → nombre del archivo guardado. */
+    /** Las 5 fotos del POS: clave de [FOTOS_POS] → nombre del archivo guardado. */
     val fotos: Map<String, String> = emptyMap(),
+    /** «Retiro» o «Instalación». */
+    val trabajo: String = "",
 ) {
     fun pieza(nombre: String) = piezas[nombre] ?: Pieza()
 
-    /** Fotos en el orden de las columnas, con el nombre legible del campo y el valor leído. */
-    fun fotosOrdenadas(): List<Triple<String, String, String>> {
-        val lista = mutableListOf<Triple<String, String, String>>()
-        for (c in COMPONENTES) {
-            for (campo in listOf("modelo", "serie")) {
-                val k = "$c|$campo"
-                fotos[k]?.let {
-                    val texto = etiqueta(c, tipo) + " - " + (if (campo == "modelo") "Modelo" else "Serie")
-                    lista.add(Triple(k, texto, if (campo == "modelo") pieza(c).modelo else pieza(c).serie))
-                }
-            }
-        }
-        fotos[FOTO_NOTAS]?.let { lista.add(Triple(FOTO_NOTAS, "Notas", notas)) }
-        fotos[FOTO_ESTADO]?.let { lista.add(Triple(FOTO_ESTADO, "Estado POS", estado)) }
-        return lista
-    }
-
     /** Columnas en el mismo orden que la planilla Excel. */
     fun comoFila(numero: Int): List<String> {
-        val f = mutableListOf(numero.toString(), fecha, cliente, tienda, direccion, region, tipo, ubicacion, numeroPos)
+        val f = mutableListOf(numero.toString(), fecha, trabajo, cliente, tienda, direccion, region, tipo, ubicacion, numeroPos)
         for (c in COMPONENTES) {
             f.add(pieza(c).modelo)
             f.add(pieza(c).serie)
         }
         f.add(notas)
         f.add(estado)
-        val n = fotos.size
-        f.add(if (n == 0) "" else if (n == 1) "Ver 1 foto" else "Ver $n fotos")
+        // Las fotos van como imágenes encima de estas celdas; el texto queda en blanco.
+        repeat(FOTOS_POS.size) { f.add("") }
         return f
     }
 
     companion object {
         const val POS = "POS"
         const val SSCO = "SSCO"
-        const val FOTO_NOTAS = "notas"
-        const val FOTO_ESTADO = "estado"
+        const val RETIRO = "Retiro"
+        const val INSTALACION = "Instalación"
+
+        /** Las 5 fotos que se piden por caja: clave → nombre para la pantalla y el Excel. */
+        val FOTOS_POS = listOf(
+            "foto_serie" to "Serie del POS",
+            "foto_equipo" to "Cómo quedó el equipo",
+            "foto_cableado" to "Cableado del POS",
+            "foto_boleta" to "Boleta POS certificado",
+            "foto_adicional" to "Adicional",
+        )
 
         /** Orden de las columnas en el Excel (todas las cajas usan las mismas columnas). */
         /** El propio equipo POS o SSCO; en pantalla se muestra con el nombre del tipo de caja. */
@@ -83,24 +77,30 @@ data class Caja(
         /** Nombre que se ve en pantalla: el componente principal se llama como el tipo de caja. */
         fun etiqueta(nombre: String, tipo: String) = if (nombre == PRINCIPAL) tipo.ifEmpty { PRINCIPAL } else nombre
 
+        /** Ancho (en caracteres) de las columnas con fotos en el Excel. */
+        const val ANCHO_COLUMNA_FOTO = 30
+
+        /** Índice de la primera columna de fotos en el Excel. */
+        val PRIMERA_COLUMNA_FOTO: Int get() = ENCABEZADO.size - FOTOS_POS.size
+
         val ENCABEZADO: List<String> by lazy {
-            val e = mutableListOf("N°", "Fecha", "Cliente", "N° Tienda", "Dirección", "Región", "Tipo", "Ubicación POS", "N° POS")
+            val e = mutableListOf("N°", "Fecha", "Trabajo", "Cliente", "N° Tienda", "Dirección", "Región", "Tipo", "Ubicación POS", "N° POS")
             for (c in COMPONENTES) {
                 e.add("$c - Modelo")
                 e.add("$c - Serie")
             }
             e.add("Notas")
             e.add("Estado POS")
-            e.add("Fotos")
+            FOTOS_POS.forEach { (_, nombre) -> e.add("Foto: $nombre") }
             e
         }
 
         val ANCHOS: List<Int> by lazy {
-            val a = mutableListOf(6, 12, 16, 11, 34, 26, 8, 14, 9)
+            val a = mutableListOf(6, 12, 12, 16, 11, 34, 26, 8, 14, 9)
             repeat(COMPONENTES.size) { a.add(20); a.add(20) }
             a.add(30)
             a.add(34)
-            a.add(13)
+            repeat(FOTOS_POS.size) { a.add(ANCHO_COLUMNA_FOTO) }
             a
         }
     }
@@ -145,8 +145,11 @@ class Almacen(context: Context) {
                         piezas = piezas,
                         notas = o.optString("notas"),
                         estado = o.optString("estado"),
-                        fotos = o.optJSONObject("fotos")?.let { f -> f.keys().asSequence().associateWith { k -> f.optString(k) } }
-                            ?: emptyMap(),
+                        fotos = migrarFotos(
+                            o.optJSONObject("fotos")?.let { f -> f.keys().asSequence().associateWith { k -> f.optString(k) } }
+                                ?: emptyMap(),
+                        ),
+                        trabajo = o.optString("trabajo"),
                     )
                 )
             }
@@ -177,9 +180,23 @@ class Almacen(context: Context) {
                     .put("notas", c.notas)
                     .put("estado", c.estado)
                     .put("fotos", JSONObject(c.fotos))
+                    .put("trabajo", c.trabajo)
             )
         }
         prefs.edit().putString("cajas", arr.toString()).apply()
+    }
+
+    /** Fotos guardadas con la versión anterior: se pasan a los 5 espacios nuevos cuando corresponde. */
+    private fun migrarFotos(viejas: Map<String, String>): Map<String, String> {
+        val validas = Caja.FOTOS_POS.map { it.first }.toSet()
+        val r = viejas.filterKeys { it in validas }.toMutableMap()
+        val equivalencias = mapOf(
+            "${Caja.PRINCIPAL}|serie" to "foto_serie",
+            "estado" to "foto_equipo",
+            "notas" to "foto_adicional",
+        )
+        for ((vieja, nueva) in equivalencias) viejas[vieja]?.let { r.putIfAbsent(nueva, it) }
+        return r
     }
 
     private fun convertirViejas(texto: String): MutableList<Caja> {

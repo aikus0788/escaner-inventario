@@ -25,12 +25,11 @@ object XlsxReader {
         val hojas = hojasPorNombre(archivos)
         val principal = hojas.entries.firstOrNull()?.value ?: primeraHojaPorArchivo(archivos)
             ?: throw FormatoNoValido("El Excel no tiene hojas con datos.")
-        val tabla = leerHoja(archivos.getValue(principal), compartidos).values.toList()
-        val fotosPorCaja = try {
-            hojas[XlsxWriter.HOJA_FOTOS]?.let { leerFotos(archivos, it, compartidos) } ?: emptyMap()
-        } catch (_: Exception) {
-            emptyMap()
-        }
+        val hoja = leerHoja(archivos.getValue(principal), compartidos)
+        val numerosDeFila = hoja.keys.toList()
+        val tabla = hoja.values.toList()
+        // Imágenes ancladas en la hoja: (fila, columna) contadas desde 0 → bytes.
+        val imagenes = try { imagenesDeHoja(archivos, principal) } catch (_: Exception) { emptyMap() }
         val iEnc = tabla.indexOfFirst { fila ->
             val n = fila.map { normalizar(it) }
             n.any { it == "modelo" || it == "serie" || it.endsWith("serie") } || n.any { it.startsWith("tipo") }
@@ -51,7 +50,10 @@ object XlsxReader {
         val cNumPos = col("npos", "numeropos", "numerodepos", "nropos", "nodepos")
         val cNotas = col("notas", "observaciones", "comentarios")
         val cEstado = col("estadopos", "estadodelpos", "estado")
-        val cNumero = exacta("n")
+        val cTrabajo = col("trabajo", "tipodetrabajo")
+        // Columnas de las 5 fotos: "Foto: Serie del POS", …
+        val colsFoto = Caja.FOTOS_POS.associate { (clave, nombre) -> clave to exacta(normalizar("Foto: $nombre")) }
+            .filterValues { it >= 0 }
 
         // Formato nuevo: "Pantalla - Modelo", "Pantalla - Serie", …
         val colsPieza = Caja.COMPONENTES.associateWith { c ->
@@ -75,6 +77,13 @@ object XlsxReader {
                     direccion = v(cDireccion), region = v(cRegion), tipo = tipo.ifEmpty { Caja.POS },
                     ubicacion = v(cUbic), numeroPos = v(cNumPos), piezas = piezas, notas = v(cNotas),
                     estado = v(cEstado),
+                    trabajo = v(cTrabajo).let { t ->
+                        when {
+                            t.startsWith("ret", true) -> Caja.RETIRO
+                            t.startsWith("ins", true) -> Caja.INSTALACION
+                            else -> t
+                        }
+                    },
                 )
             } else {
                 // Formato antiguo: una fila por equipo.
@@ -88,8 +97,9 @@ object XlsxReader {
             val tieneDatos = caja.piezas.isNotEmpty() ||
                 listOf(caja.cliente, caja.tienda, caja.ubicacion, caja.numeroPos, caja.notas, caja.estado).any { it.isNotEmpty() }
             if (tieneDatos) {
-                val numero = v(cNumero).toIntOrNull()
-                cajas.add(CajaLeida(caja, numero?.let { fotosPorCaja[it] } ?: emptyMap()))
+                val filaCero = numerosDeFila[i] - 1
+                val fotos = colsFoto.mapNotNull { (clave, c) -> imagenes[filaCero to c]?.let { clave to it } }.toMap()
+                cajas.add(CajaLeida(caja, fotos))
             }
         }
         return cajas
@@ -195,55 +205,45 @@ object XlsxReader {
 
     private fun local(nombre: String) = nombre.substringAfter(':')
 
-    /** Lee la hoja «Fotos»: N° de caja → (clave del campo → bytes de la imagen). */
-    private fun leerFotos(archivos: Map<String, ByteArray>, hoja: String, compartidos: List<String>): Map<Int, Map<String, ByteArray>> {
-        val filas = leerHoja(archivos.getValue(hoja), compartidos)
-        val enc = filas[1]?.map { normalizar(it) } ?: return emptyMap()
-        val cCaja = enc.indexOf("ncaja").takeIf { it >= 0 } ?: 0
-        val cClave = enc.indexOf("clave").takeIf { it >= 0 } ?: return emptyMap()
-
-        // Hoja → dibujo
+    /** Imágenes ancladas en una hoja: (fila, columna) desde 0 → bytes. */
+    private fun imagenesDeHoja(archivos: Map<String, ByteArray>, hoja: String): Map<Pair<Int, Int>, ByteArray> {
         val relsHoja = archivos[carpetaDe(hoja) + "/_rels/" + hoja.substringAfterLast('/') + ".rels"] ?: return emptyMap()
         val dibujo = relaciones(relsHoja).values.firstOrNull { it.first.endsWith("/drawing") }?.second ?: return emptyMap()
         val rutaDibujo = resolver(carpetaDe(hoja), dibujo)
         val bytesDibujo = archivos[rutaDibujo] ?: return emptyMap()
         val relsDibujo = archivos[carpetaDe(rutaDibujo) + "/_rels/" + rutaDibujo.substringAfterLast('/') + ".rels"] ?: return emptyMap()
-        val imagenes = relaciones(relsDibujo)
+        val destinos = relaciones(relsDibujo)
 
-        // Cada imagen anclada en una fila (0 = primera fila).
-        val porFila = mutableMapOf<Int, String>()
+        val resultado = mutableMapOf<Pair<Int, Int>, ByteArray>()
         var enFrom = false
-        var enRow = false
-        var filaAncla = -1
+        var campo = ""
+        var fila = -1
+        var col = -1
         val texto = StringBuilder()
         parsear(bytesDibujo) { p ->
             when (p.eventType) {
                 XmlPullParser.START_TAG -> when (local(p.name)) {
-                    "oneCellAnchor", "twoCellAnchor", "absoluteAnchor" -> filaAncla = -1
+                    "oneCellAnchor", "twoCellAnchor", "absoluteAnchor" -> { fila = -1; col = -1 }
                     "from" -> enFrom = true
-                    "row" -> if (enFrom) { enRow = true; texto.setLength(0) }
+                    "row", "col" -> if (enFrom) { campo = local(p.name); texto.setLength(0) }
                     "blip" -> {
                         var rid: String? = null
                         for (i in 0 until p.attributeCount) if (p.getAttributeName(i).endsWith("embed")) rid = p.getAttributeValue(i)
-                        val destino = rid?.let { imagenes[it]?.second }
-                        if (destino != null && filaAncla >= 0) porFila[filaAncla] = resolver(carpetaDe(rutaDibujo), destino)
+                        val destino = rid?.let { destinos[it]?.second }
+                        val bytes = destino?.let { archivos[resolver(carpetaDe(rutaDibujo), it)] }
+                        if (bytes != null && fila >= 0 && col >= 0) resultado[fila to col] = bytes
                     }
                 }
-                XmlPullParser.TEXT -> if (enRow) texto.append(p.text)
+                XmlPullParser.TEXT -> if (campo.isNotEmpty()) texto.append(p.text)
                 XmlPullParser.END_TAG -> when (local(p.name)) {
-                    "row" -> if (enRow) { enRow = false; filaAncla = texto.toString().trim().toIntOrNull() ?: -1 }
+                    "row", "col" -> if (campo.isNotEmpty()) {
+                        val n = texto.toString().trim().toIntOrNull() ?: -1
+                        if (campo == "row") fila = n else col = n
+                        campo = ""
+                    }
                     "from" -> enFrom = false
                 }
             }
-        }
-
-        val resultado = mutableMapOf<Int, MutableMap<String, ByteArray>>()
-        for ((filaCero, ruta) in porFila) {
-            val celdas = filas[filaCero + 1] ?: continue
-            val caja = celdas.getOrNull(cCaja)?.trim()?.toIntOrNull() ?: continue
-            val clave = celdas.getOrNull(cClave)?.trim().orEmpty()
-            val bytes = archivos[ruta] ?: continue
-            if (clave.isNotEmpty()) resultado.getOrPut(caja) { mutableMapOf() }[clave] = bytes
         }
         return resultado
     }

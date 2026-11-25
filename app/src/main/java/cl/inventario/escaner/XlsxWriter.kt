@@ -6,50 +6,36 @@ import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 
 /**
- * Escribe un archivo .xlsx sin librerías externas.
- *  - Hoja «Inventario»: una fila por caja.
- *  - Hoja «Fotos» (si hay fotos): una fila por foto, con la imagen incrustada.
- * Desde la hoja principal, la columna de fotos enlaza a las fotos de cada caja, y vuelta.
+ * Escribe un archivo .xlsx sin librerías externas: hoja «Inventario», una fila por caja.
+ * Las fotos van como imágenes dentro de sus celdas; donde no hay foto, la celda queda en blanco.
  */
 object XlsxWriter {
 
-    /** Una foto para la hoja «Fotos». [caja] es el N° de la caja en la hoja principal (1, 2, 3…). */
-    data class FotoExcel(
-        val caja: Int,
-        val cajaTexto: String,
-        val campo: String,
-        val valor: String,
-        val clave: String,
-        val archivo: File,
-    )
+    /** Una foto dentro de la hoja: [fila] es la caja (0 = primera caja) y [columna] la columna (0 = A). */
+    data class FotoCelda(val fila: Int, val columna: Int, val archivo: File, val descripcion: String)
 
     const val HOJA_PRINCIPAL = "Inventario"
-    const val HOJA_FOTOS = "Fotos"
-    val ENCABEZADO_FOTOS = listOf("N° caja", "Caja", "Foto de", "Valor", "Foto", "clave")
-    private val ANCHOS_FOTOS = listOf(9, 26, 24, 26, 46, 22)
 
     private const val EMU_POR_PX = 9525L
-    private const val FOTO_ANCHO_MAX = 320
-    private const val FOTO_ALTO_MAX = 230
+    private const val FOTO_ANCHO_MAX = 200
+    private const val FOTO_ALTO_MAX = 150
+    private const val MARGEN_PX = 5
 
     // Estilos (índices de cellXfs)
     private const val S_ENCABEZADO = 1
     private const val S_TEXTO = 2
-    private const val S_ENLACE = 3
-    private const val S_TEXTO_ARRIBA = 4
-    private const val S_ENLACE_ARRIBA = 5
+    private const val S_TEXTO_ARRIBA = 3
 
     fun escribir(
         destino: File,
         encabezado: List<String>,
         filas: List<List<String>>,
         anchos: List<Int>,
-        fotos: List<FotoExcel> = emptyList(),
-        columnaEnlace: Int = -1,
+        fotos: List<FotoCelda> = emptyList(),
     ) {
-        // Solo las fotos cuyo archivo existe.
         val fotosOk = fotos.filter { it.archivo.exists() && it.archivo.length() > 0 }
         val hayFotos = fotosOk.isNotEmpty()
+        val filasConFoto = fotosOk.map { it.fila }.toSet()
 
         ZipOutputStream(FileOutputStream(destino)).use { zip ->
             fun agregar(nombre: String, contenido: String) {
@@ -58,7 +44,22 @@ object XlsxWriter {
                 zip.closeEntry()
             }
 
-            agregar("[Content_Types].xml", tiposDeContenido(hayFotos))
+            val extra = if (hayFotos) {
+                """<Default Extension="jpg" ContentType="image/jpeg"/>
+<Override PartName="/xl/drawings/drawing1.xml" ContentType="application/vnd.openxmlformats-officedocument.drawing+xml"/>"""
+            } else ""
+            agregar(
+                "[Content_Types].xml",
+                """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+<Default Extension="xml" ContentType="application/xml"/>
+$extra
+<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>
+<Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
+<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>
+</Types>""",
+            )
             agregar(
                 "_rels/.rels",
                 """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
@@ -66,38 +67,46 @@ object XlsxWriter {
 <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>
 </Relationships>""",
             )
-            val hojaFotos = if (hayFotos) """<sheet name="$HOJA_FOTOS" sheetId="2" r:id="rId3"/>""" else ""
             agregar(
                 "xl/workbook.xml",
                 """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
-<sheets><sheet name="$HOJA_PRINCIPAL" sheetId="1" r:id="rId1"/>$hojaFotos</sheets>
+<sheets><sheet name="$HOJA_PRINCIPAL" sheetId="1" r:id="rId1"/></sheets>
 </workbook>""",
             )
-            val relFotos = if (hayFotos) {
-                """<Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet2.xml"/>"""
-            } else ""
             agregar(
                 "xl/_rels/workbook.xml.rels",
                 """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
 <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>
 <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>
-$relFotos
 </Relationships>""",
             )
             agregar("xl/styles.xml", estilos())
 
-            // Fila de la hoja «Fotos» donde empieza cada caja (para los enlaces).
-            val primeraFilaDeCaja = mutableMapOf<Int, Int>()
-            fotosOk.forEachIndexed { i, f -> primeraFilaDeCaja.putIfAbsent(f.caja, i + 2) }
-
-            agregar("xl/worksheets/sheet1.xml", hojaPrincipal(encabezado, filas, anchos, columnaEnlace, primeraFilaDeCaja))
+            // Hoja
+            val sb = StringBuilder()
+            sb.append("""<?xml version="1.0" encoding="UTF-8" standalone="yes"?>""")
+            sb.append("""<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">""")
+            sb.append("""<sheetViews><sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>""")
+            sb.append("<cols>")
+            anchos.forEachIndexed { i, w -> sb.append("""<col min="${i + 1}" max="${i + 1}" width="$w" customWidth="1"/>""") }
+            sb.append("</cols><sheetData>")
+            fila(sb, 1, encabezado, S_ENCABEZADO)
+            val altoFila = (FOTO_ALTO_MAX + 2 * MARGEN_PX) * 0.75
+            filas.forEachIndexed { i, f ->
+                if (i in filasConFoto) fila(sb, i + 2, f, S_TEXTO_ARRIBA, altoFila) else fila(sb, i + 2, f, S_TEXTO)
+            }
+            sb.append("</sheetData>")
+            val ultima = columna(encabezado.size - 1) + (filas.size + 1)
+            sb.append("""<autoFilter ref="A1:$ultima"/>""")
+            if (hayFotos) sb.append("""<drawing r:id="rId1"/>""")
+            sb.append("</worksheet>")
+            agregar("xl/worksheets/sheet1.xml", sb.toString())
 
             if (hayFotos) {
-                agregar("xl/worksheets/sheet2.xml", hojaDeFotos(fotosOk))
                 agregar(
-                    "xl/worksheets/_rels/sheet2.xml.rels",
+                    "xl/worksheets/_rels/sheet1.xml.rels",
                     """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
 <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/drawing" Target="../drawings/drawing1.xml"/>
@@ -112,10 +121,8 @@ $relFotos
                 }
                 rels.append("</Relationships>")
                 agregar("xl/drawings/_rels/drawing1.xml.rels", rels.toString())
-
-                // Las imágenes ya vienen comprimidas: se guardan tal cual.
                 fotosOk.forEachIndexed { i, f ->
-                    zip.putNextEntry(ZipEntry("xl/media/image${i + 1}.jpg").apply { method = ZipEntry.DEFLATED })
+                    zip.putNextEntry(ZipEntry("xl/media/image${i + 1}.jpg"))
                     f.archivo.inputStream().use { it.copyTo(zip) }
                     zip.closeEntry()
                 }
@@ -123,106 +130,22 @@ $relFotos
         }
     }
 
-    private fun tiposDeContenido(hayFotos: Boolean): String {
-        val extra = if (hayFotos) {
-            """<Default Extension="jpg" ContentType="image/jpeg"/>
-<Override PartName="/xl/worksheets/sheet2.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
-<Override PartName="/xl/drawings/drawing1.xml" ContentType="application/vnd.openxmlformats-officedocument.drawing+xml"/>"""
-        } else ""
-        return """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
-<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
-<Default Extension="xml" ContentType="application/xml"/>
-$extra
-<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>
-<Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
-<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>
-</Types>"""
-    }
-
     private fun estilos() = """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
-<fonts count="3"><font><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="11"/><name val="Calibri"/></font><font><u/><sz val="11"/><color rgb="FF0832D6"/><name val="Calibri"/></font></fonts>
+<fonts count="2"><font><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="11"/><name val="Calibri"/></font></fonts>
 <fills count="3"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FFF0960A"/><bgColor indexed="64"/></patternFill></fill></fills>
 <borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders>
 <cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>
-<cellXfs count="6">
+<cellXfs count="4">
 <xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>
 <xf numFmtId="0" fontId="1" fillId="2" borderId="0" xfId="0" applyFont="1" applyFill="1"/>
 <xf numFmtId="49" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/>
-<xf numFmtId="49" fontId="2" fillId="0" borderId="0" xfId="0" applyNumberFormat="1" applyFont="1"/>
 <xf numFmtId="49" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1" applyAlignment="1"><alignment vertical="top" wrapText="1"/></xf>
-<xf numFmtId="49" fontId="2" fillId="0" borderId="0" xfId="0" applyNumberFormat="1" applyFont="1" applyAlignment="1"><alignment vertical="top"/></xf>
 </cellXfs>
 <cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>
 </styleSheet>"""
 
-    private fun hojaPrincipal(
-        encabezado: List<String>,
-        filas: List<List<String>>,
-        anchos: List<Int>,
-        columnaEnlace: Int,
-        primeraFilaDeCaja: Map<Int, Int>,
-    ): String {
-        val sb = StringBuilder()
-        sb.append("""<?xml version="1.0" encoding="UTF-8" standalone="yes"?>""")
-        sb.append("""<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">""")
-        sb.append("""<sheetViews><sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>""")
-        columnas(sb, anchos)
-        sb.append("<sheetData>")
-        fila(sb, 1, encabezado, S_ENCABEZADO)
-        val enlaces = StringBuilder()
-        filas.forEachIndexed { i, f ->
-            val n = i + 2
-            val caja = i + 1
-            val destino = primeraFilaDeCaja[caja]
-            val estilos = if (destino != null && columnaEnlace >= 0) mapOf(columnaEnlace to S_ENLACE) else emptyMap()
-            fila(sb, n, f, S_TEXTO, estilos)
-            if (destino != null && columnaEnlace >= 0) {
-                enlaces.append("""<hyperlink ref="${columna(columnaEnlace)}$n" location="'$HOJA_FOTOS'!A$destino" display="${escapar(f.getOrElse(columnaEnlace) { "" })}"/>""")
-            }
-        }
-        sb.append("</sheetData>")
-        val ultima = columna(encabezado.size - 1) + (filas.size + 1)
-        sb.append("""<autoFilter ref="A1:$ultima"/>""")
-        if (enlaces.isNotEmpty()) sb.append("<hyperlinks>").append(enlaces).append("</hyperlinks>")
-        sb.append("</worksheet>")
-        return sb.toString()
-    }
-
-    private fun hojaDeFotos(fotos: List<FotoExcel>): String {
-        val sb = StringBuilder()
-        sb.append("""<?xml version="1.0" encoding="UTF-8" standalone="yes"?>""")
-        sb.append("""<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">""")
-        sb.append("""<sheetViews><sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>""")
-        sb.append("<cols>")
-        ANCHOS_FOTOS.forEachIndexed { i, w ->
-            val oculta = if (i == ANCHOS_FOTOS.size - 1) """ hidden="1"""" else ""
-            sb.append("""<col min="${i + 1}" max="${i + 1}" width="$w" customWidth="1"$oculta/>""")
-        }
-        sb.append("</cols><sheetData>")
-        fila(sb, 1, ENCABEZADO_FOTOS, S_ENCABEZADO)
-        val enlaces = StringBuilder()
-        fotos.forEachIndexed { i, f ->
-            val n = i + 2
-            val (_, alto) = tamanoEnPantalla(f.archivo)
-            val altoPuntos = (alto + 10) * 0.75
-            fila(
-                sb, n,
-                listOf(f.caja.toString(), f.cajaTexto, f.campo, f.valor, "", f.clave),
-                S_TEXTO_ARRIBA, mapOf(0 to S_ENLACE_ARRIBA), altoPuntos,
-            )
-            // El N° de caja vuelve a su fila en la hoja principal.
-            enlaces.append("""<hyperlink ref="A$n" location="'$HOJA_PRINCIPAL'!A${f.caja + 1}" display="${f.caja}"/>""")
-        }
-        sb.append("</sheetData>")
-        sb.append("<hyperlinks>").append(enlaces).append("</hyperlinks>")
-        sb.append("""<drawing r:id="rId1"/>""")
-        sb.append("</worksheet>")
-        return sb.toString()
-    }
-
-    private fun dibujo(fotos: List<FotoExcel>): String {
+    private fun dibujo(fotos: List<FotoCelda>): String {
         val sb = StringBuilder()
         sb.append("""<?xml version="1.0" encoding="UTF-8" standalone="yes"?>""")
         sb.append("""<xdr:wsDr xmlns:xdr="http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">""")
@@ -230,12 +153,12 @@ $extra
             val (ancho, alto) = tamanoEnPantalla(f.archivo)
             val cx = ancho * EMU_POR_PX
             val cy = alto * EMU_POR_PX
-            val margen = 5 * EMU_POR_PX
+            val margen = MARGEN_PX * EMU_POR_PX
             sb.append("<xdr:oneCellAnchor>")
-            sb.append("<xdr:from><xdr:col>4</xdr:col><xdr:colOff>$margen</xdr:colOff><xdr:row>${i + 1}</xdr:row><xdr:rowOff>$margen</xdr:rowOff></xdr:from>")
+            sb.append("<xdr:from><xdr:col>${f.columna}</xdr:col><xdr:colOff>$margen</xdr:colOff><xdr:row>${f.fila + 1}</xdr:row><xdr:rowOff>$margen</xdr:rowOff></xdr:from>")
             sb.append("""<xdr:ext cx="$cx" cy="$cy"/>""")
             sb.append("<xdr:pic>")
-            sb.append("""<xdr:nvPicPr><xdr:cNvPr id="${i + 2}" name="Foto ${i + 1}" descr="${escapar(f.campo)}"/><xdr:cNvPicPr><a:picLocks noChangeAspect="1"/></xdr:cNvPicPr></xdr:nvPicPr>""")
+            sb.append("""<xdr:nvPicPr><xdr:cNvPr id="${i + 2}" name="Foto ${i + 1}" descr="${escapar(f.descripcion)}"/><xdr:cNvPicPr><a:picLocks noChangeAspect="1"/></xdr:cNvPicPr></xdr:nvPicPr>""")
             sb.append("""<xdr:blipFill><a:blip r:embed="rId${i + 1}"/><a:stretch><a:fillRect/></a:stretch></xdr:blipFill>""")
             sb.append("""<xdr:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="$cx" cy="$cy"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></xdr:spPr>""")
             sb.append("</xdr:pic><xdr:clientData/></xdr:oneCellAnchor>")
@@ -244,7 +167,7 @@ $extra
         return sb.toString()
     }
 
-    /** Tamaño en píxeles con que se muestra la foto en la hoja, manteniendo la proporción. */
+    /** Tamaño en píxeles con que se muestra la foto en su celda, manteniendo la proporción. */
     private fun tamanoEnPantalla(archivo: File): Pair<Int, Int> {
         val (w, h) = medidasJpeg(archivo) ?: (4 to 3)
         val f = minOf(FOTO_ANCHO_MAX.toDouble() / w, FOTO_ALTO_MAX.toDouble() / h)
@@ -285,26 +208,18 @@ $extra
         null
     }
 
-    private fun columnas(sb: StringBuilder, anchos: List<Int>) {
-        sb.append("<cols>")
-        anchos.forEachIndexed { i, w -> sb.append("""<col min="${i + 1}" max="${i + 1}" width="$w" customWidth="1"/>""") }
-        sb.append("</cols>")
-    }
-
     private fun fila(
         sb: StringBuilder,
         n: Int,
         valores: List<String>,
         estilo: Int,
-        estilos: Map<Int, Int> = emptyMap(),
         alto: Double? = null,
     ) {
         if (alto != null) sb.append("""<row r="$n" ht="${"%.1f".format(java.util.Locale.US, alto)}" customHeight="1">""")
         else sb.append("""<row r="$n">""")
         valores.forEachIndexed { i, v ->
-            val s = estilos[i] ?: estilo
-            if (v.isEmpty() && s == estilo && estilo != S_ENCABEZADO) return@forEachIndexed
-            sb.append("""<c r="${columna(i)}$n" t="inlineStr" s="$s"><is><t xml:space="preserve">""")
+            if (v.isEmpty() && estilo != S_ENCABEZADO) return@forEachIndexed
+            sb.append("""<c r="${columna(i)}$n" t="inlineStr" s="$estilo"><is><t xml:space="preserve">""")
             sb.append(escapar(v))
             sb.append("</t></is></c>")
         }

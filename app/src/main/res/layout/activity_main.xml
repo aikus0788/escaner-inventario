@@ -46,6 +46,20 @@
                 android:textColor="@color/blanco"
                 android:textSize="20sp"
                 android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/txtTrabajo"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:background="@drawable/fondo_trabajo"
+                android:foreground="?attr/selectableItemBackground"
+                android:paddingHorizontal="10dp"
+                android:paddingVertical="3dp"
+                android:text="Elegir trabajo ▾"
+                android:textColor="@color/tinta"
+                android:textSize="13sp"
+                android:textStyle="bold" />
         </LinearLayout>
 
         <TextView
@@ -295,47 +309,8 @@
                                 android:layout_height="wrap_content"
                                 android:inputType="textCapSentences|textMultiLine" />
                         </com.google.android.material.textfield.TextInputLayout>
-
-                        <com.google.android.material.button.MaterialButton
-                            android:id="@+id/btnFotoNotas"
-                            style="@style/BotonCamara"
-                            android:contentDescription="Foto para las notas (opcional)" />
                     </LinearLayout>
 
-                    <LinearLayout
-                        android:id="@+id/filaNotas"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="6dp"
-                        android:gravity="center_vertical"
-                        android:orientation="horizontal"
-                        android:visibility="gone">
-
-                        <ImageView
-                            android:id="@+id/imgNotas"
-                            android:layout_width="72dp"
-                            android:layout_height="72dp"
-                            android:background="@color/linea"
-                            android:contentDescription="Foto de las notas"
-                            android:scaleType="centerCrop" />
-
-                        <TextView
-                            android:layout_width="0dp"
-                            android:layout_height="wrap_content"
-                            android:layout_marginStart="10dp"
-                            android:layout_weight="1"
-                            android:text="📷 Foto guardada.\nTócala para verla en grande."
-                            android:textColor="@color/verde"
-                            android:textSize="13sp" />
-
-                        <com.google.android.material.button.MaterialButton
-                            android:id="@+id/btnQuitarNotas"
-                            style="@style/Widget.Material3.Button.TextButton"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:text="Quitar"
-                            android:textColor="@color/rojo" />
-                    </LinearLayout>
 
                     <TextView style="@style/Etiqueta" android:layout_marginTop="16dp" android:text="ESTADO DEL POS" />
 
@@ -359,55 +334,23 @@
                                 android:inputType="textCapSentences|textMultiLine"
                                 android:minLines="2" />
                         </com.google.android.material.textfield.TextInputLayout>
-
-                        <com.google.android.material.button.MaterialButton
-                            android:id="@+id/btnFotoEstado"
-                            style="@style/BotonCamara"
-                            android:contentDescription="Foto de evidencia del estado del POS" />
                     </LinearLayout>
+
+                    <TextView style="@style/Etiqueta" android:layout_marginTop="18dp" android:text="FOTOS DEL POS" />
 
                     <TextView
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:layout_marginTop="4dp"
-                        android:text="Saca una foto de cómo quedó el POS como evidencia."
+                        android:text="Saca las que correspondan. Las que no saques quedan en blanco en el Excel."
                         android:textColor="@color/gris"
                         android:textSize="12sp" />
 
                     <LinearLayout
-                        android:id="@+id/filaEstado"
+                        android:id="@+id/contenedorFotos"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:layout_marginTop="6dp"
-                        android:gravity="center_vertical"
-                        android:orientation="horizontal"
-                        android:visibility="gone">
+                        android:orientation="vertical" />
 
-                        <ImageView
-                            android:id="@+id/imgEstado"
-                            android:layout_width="72dp"
-                            android:layout_height="72dp"
-                            android:background="@color/linea"
-                            android:contentDescription="Foto de evidencia del estado del POS"
-                            android:scaleType="centerCrop" />
-
-                        <TextView
-                            android:layout_width="0dp"
-                            android:layout_height="wrap_content"
-                            android:layout_marginStart="10dp"
-                            android:layout_weight="1"
-                            android:text="📷 Foto guardada.\nTócala para verla en grande."
-                            android:textColor="@color/verde"
-                            android:textSize="13sp" />
-
-                        <com.google.android.material.button.MaterialButton
-                            android:id="@+id/btnQuitarEstado"
-                            style="@style/Widget.Material3.Button.TextButton"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:text="Quitar"
-                            android:textColor="@color/rojo" />
-                    </LinearLayout>
 
                     <com.google.android.material.button.MaterialButton
                         android:id="@+id/btnGuardar"

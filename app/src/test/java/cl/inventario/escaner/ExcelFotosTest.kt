@@ -37,21 +37,22 @@ class ExcelFotosTest {
             notas = "Pantalla con rayas", estado = "Operativo, limpio",
         )
         val cajas = listOf(
-            base.copy(fotos = mapOf("${Caja.PRINCIPAL}|serie" to f1.name, Caja.FOTO_NOTAS to f2.name, Caja.FOTO_ESTADO to f3.name)),
-            base.copy(id = 2, numeroPos = "06", ubicacion = "Caja 4", notas = "", estado = "Sin fotos"),
-            base.copy(id = 3, tipo = Caja.SSCO, numeroPos = "07", fotos = mapOf("Impresora|modelo" to f4.name)),
+            base.copy(trabajo = Caja.RETIRO, fotos = mapOf("foto_serie" to f1.name, "foto_equipo" to f2.name, "foto_cableado" to f3.name)),
+            base.copy(id = 2, trabajo = Caja.RETIRO, numeroPos = "06", ubicacion = "Caja 4", notas = "", estado = "Sin fotos"),
+            base.copy(id = 3, trabajo = Caja.INSTALACION, tipo = Caja.SSCO, numeroPos = "07", fotos = mapOf("foto_adicional" to f4.name)),
         )
 
-        val fotos = mutableListOf<XlsxWriter.FotoExcel>()
+        val fotos = mutableListOf<XlsxWriter.FotoCelda>()
         cajas.forEachIndexed { i, c ->
-            for ((k, campo, valor) in c.fotosOrdenadas()) {
-                fotos.add(XlsxWriter.FotoExcel(i + 1, "${c.tipo} N° ${c.numeroPos}", campo, valor, k, File(dir, c.fotos.getValue(k))))
+            Caja.FOTOS_POS.forEachIndexed { j, (k, nombre) ->
+                val f = c.fotos[k] ?: return@forEachIndexed
+                fotos.add(XlsxWriter.FotoCelda(i, Caja.PRIMERA_COLUMNA_FOTO + j, File(dir, f), nombre))
             }
         }
         assertEquals(4, fotos.size)
 
         val salida = File("build/prueba-fotos.xlsx")
-        XlsxWriter.escribir(salida, Caja.ENCABEZADO, cajas.mapIndexed { i, c -> c.comoFila(i + 1) }, Caja.ANCHOS, fotos, Caja.ENCABEZADO.size - 1)
+        XlsxWriter.escribir(salida, Caja.ENCABEZADO, cajas.mapIndexed { i, c -> c.comoFila(i + 1) }, Caja.ANCHOS, fotos)
 
         val leidas = salida.inputStream().use { XlsxReader.leerCajas(it) }
         assertEquals(3, leidas.size)
@@ -60,11 +61,14 @@ class ExcelFotosTest {
         assertEquals("05", leidas[0].caja.numeroPos)
         assertEquals("512", leidas[0].caja.tienda)
         assertEquals("41A2B3C", leidas[0].caja.pieza(Caja.PRINCIPAL).serie)
-        assertEquals(setOf("${Caja.PRINCIPAL}|serie", Caja.FOTO_NOTAS, Caja.FOTO_ESTADO), leidas[0].fotos.keys)
+        assertEquals(Caja.RETIRO, leidas[0].caja.trabajo)
+        assertEquals(Caja.INSTALACION, leidas[2].caja.trabajo)
+        assertEquals(setOf("foto_serie", "foto_equipo", "foto_cableado"), leidas[0].fotos.keys)
         assertEquals(0, leidas[1].fotos.size)
-        assertEquals(setOf("Impresora|modelo"), leidas[2].fotos.keys)
-        assertArrayEquals(f1.readBytes(), leidas[0].fotos.getValue("${Caja.PRINCIPAL}|serie"))
-        assertArrayEquals(f4.readBytes(), leidas[2].fotos.getValue("Impresora|modelo"))
+        assertEquals(setOf("foto_adicional"), leidas[2].fotos.keys)
+        assertArrayEquals(f1.readBytes(), leidas[0].fotos.getValue("foto_serie"))
+        assertArrayEquals(f3.readBytes(), leidas[0].fotos.getValue("foto_cableado"))
+        assertArrayEquals(f4.readBytes(), leidas[2].fotos.getValue("foto_adicional"))
 
         // Sin fotos el Excel sigue siendo de una sola hoja y se puede leer.
         val sinFotos = File("build/prueba-sin-fotos.xlsx")
