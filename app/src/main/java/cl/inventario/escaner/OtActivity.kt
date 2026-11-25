@@ -14,6 +14,7 @@ import android.view.View
 import android.widget.EditText
 import android.widget.TextView
 import android.widget.Toast
+import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
@@ -56,6 +57,14 @@ class OtActivity : AppCompatActivity() {
     private val tomarFoto = registerForActivityResult(ActivityResultContracts.TakePicture()) { ok ->
         val o = objetivo ?: return@registerForActivityResult
         if (ok) leerEtiqueta(o.first, o.second)
+    }
+
+    private val elegirImagen = registerForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
+        val o = objetivo ?: return@registerForActivityResult
+        if (uri != null) {
+            if (Galeria.copiar(this, uri, fotoTemporal)) leerEtiqueta(o.first, o.second)
+            else aviso("No se pudo abrir la imagen elegida.")
+        }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -239,6 +248,12 @@ class OtActivity : AppCompatActivity() {
     private fun abrirCamara(linea: Int, esSerie: Boolean) {
         if (linea < 0) return
         objetivo = linea to esSerie
+        Galeria.preguntar(this, { tomarConCamara() }, {
+            elegirImagen.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+        })
+    }
+
+    private fun tomarConCamara() {
         val uri = FileProvider.getUriForFile(this, "$packageName.files", fotoTemporal)
         try {
             tomarFoto.launch(uri)

@@ -123,7 +123,13 @@ object OtPdf {
         dato(c, ot.recibeCargo, X_DATOS, 641.5f, X_FIN - X_DATOS)
 
         // Firma del cliente, centrada sobre «Firma cliente»
-        firma?.let { f ->
+        firma?.let { original ->
+            // Se pasa a fondo blanco opaco: algunos lectores de PDF no muestran imágenes con transparencia.
+            val f = Bitmap.createBitmap(original.width, original.height, Bitmap.Config.ARGB_8888).also {
+                val cf = Canvas(it)
+                cf.drawColor(Color.WHITE)
+                cf.drawBitmap(original, 0f, 0f, null)
+            }
             val caja = RectF(130f, 650f, 460f, 727f)
             val escala = minOf(caja.width() / f.width, caja.height() / f.height)
             val w = f.width * escala

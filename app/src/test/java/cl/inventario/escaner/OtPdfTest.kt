@@ -5,8 +5,10 @@ import android.graphics.BitmapFactory
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
-import android.graphics.Path
+import android.os.SystemClock
+import android.view.MotionEvent
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -21,18 +23,29 @@ import java.io.File
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class OtPdfTest {
 
+    /** Firma hecha como la haría el cliente: trazos con el dedo sobre FirmaView. */
     private fun firmaDePrueba(): Bitmap {
-        val bmp = Bitmap.createBitmap(600, 200, Bitmap.Config.ARGB_8888)
-        val c = Canvas(bmp)
-        val p = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = Color.rgb(15, 30, 90); style = Paint.Style.STROKE; strokeWidth = 7f; strokeCap = Paint.Cap.ROUND
+        val v = FirmaView(RuntimeEnvironment.getApplication())
+        v.layout(0, 0, 1000, 380)
+        fun trazo(puntos: List<Pair<Float, Float>>) {
+            val t = SystemClock.uptimeMillis()
+            v.onTouchEvent(MotionEvent.obtain(t, t, MotionEvent.ACTION_DOWN, puntos[0].first, puntos[0].second, 0))
+            puntos.drop(1).forEachIndexed { i, (x, y) ->
+                v.onTouchEvent(MotionEvent.obtain(t, t + i * 10L, MotionEvent.ACTION_MOVE, x, y, 0))
+            }
+            val (x, y) = puntos.last()
+            v.onTouchEvent(MotionEvent.obtain(t, t + 999, MotionEvent.ACTION_UP, x, y, 0))
         }
-        val path = Path().apply {
-            moveTo(30f, 150f); cubicTo(80f, 20f, 130f, 190f, 180f, 90f); cubicTo(220f, 20f, 260f, 170f, 320f, 110f)
-            cubicTo(370f, 60f, 420f, 160f, 470f, 100f); lineTo(570f, 80f)
-        }
-        c.drawPath(path, p)
-        return bmp
+        // Una «firma» con varias curvas y una línea final.
+        trazo((0..60).map { i -> val x = 120f + i * 9f; x to (220f + 70f * kotlin.math.sin(i / 5.0).toFloat()) })
+        trazo(listOf(300f to 300f, 420f to 120f, 520f to 310f))
+        trazo(listOf(640f to 260f, 880f to 200f))
+        val f = v.comoImagen()
+        assertNotNull(f)
+        // La firma completa ocupa casi todo el ancho; antes del arreglo quedaba un recorte de unos pocos píxeles.
+        assertTrue("ancho de la firma: ${f!!.width}", f.width > 700)
+        assertTrue("alto de la firma: ${f.height}", f.height > 150)
+        return f
     }
 
     private fun dibujar(ot: OrdenTrabajo, firma: Bitmap?, salida: String) {

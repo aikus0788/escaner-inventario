@@ -14,6 +14,7 @@ import android.widget.EditText
 import android.widget.ImageView
 import android.widget.TextView
 import android.widget.Toast
+import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
@@ -82,12 +83,22 @@ class MainActivity : AppCompatActivity() {
     private var fechaDeTrabajo = ""
 
     private val tomarFoto = registerForActivityResult(ActivityResultContracts.TakePicture()) { ok ->
-        val uri = fotoUri
-        if (ok && uri != null) {
-            val k = objetivo
-            // Las 5 fotos del POS se guardan; las de modelo y serie solo se usan para leer el dato.
-            if (Caja.FOTOS_POS.any { it.first == k }) guardarFoto(k) else procesarFoto(uri, k)
+        if (ok) usarFoto()
+    }
+
+    /** Imagen elegida de la galería: se copia a la misma foto temporal y sigue el mismo camino que la cámara. */
+    private val elegirImagen = registerForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
+        if (uri != null) {
+            if (Galeria.copiar(this, uri, File(cacheDir, "foto_actual.jpg"))) usarFoto()
+            else aviso("No se pudo abrir la imagen elegida.")
         }
+    }
+
+    private fun usarFoto() {
+        val uri = FileProvider.getUriForFile(this, "$packageName.files", File(cacheDir, "foto_actual.jpg"))
+        val k = objetivo
+        // Las 5 fotos del POS se guardan; las de modelo y serie solo se usan para leer el dato.
+        if (Caja.FOTOS_POS.any { it.first == k }) guardarFoto(k) else procesarFoto(uri, k)
     }
 
     private val abrirExcel = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
@@ -330,7 +341,15 @@ class MainActivity : AppCompatActivity() {
 
     // ---------------- Cámara y lectura ----------------
 
+    /** Pregunta si sacar una foto o elegir una imagen del teléfono. */
     private fun abrirCamara(k: String) {
+        objetivo = k
+        Galeria.preguntar(this, { tomarConCamara(k) }, {
+            elegirImagen.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+        })
+    }
+
+    private fun tomarConCamara(k: String) {
         objetivo = k
         val archivo = File(cacheDir, "foto_actual.jpg")
         val uri = FileProvider.getUriForFile(this, "$packageName.files", archivo)

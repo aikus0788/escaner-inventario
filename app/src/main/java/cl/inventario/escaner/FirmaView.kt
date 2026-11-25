@@ -18,6 +18,7 @@ class FirmaView @JvmOverloads constructor(ctx: Context, attrs: AttributeSet? = n
     private val trazos = mutableListOf<Path>()
     private var actual: Path? = null
     private val limites = RectF()
+    private var conLimites = false
     private var hayFirma = false
 
     /** Se llama cuando el cliente termina un trazo. */
@@ -42,6 +43,7 @@ class FirmaView @JvmOverloads constructor(ctx: Context, attrs: AttributeSet? = n
         actual = null
         hayFirma = false
         limites.setEmpty()
+        conLimites = false
         invalidate()
         alCambiar?.invoke()
     }
@@ -84,7 +86,13 @@ class FirmaView @JvmOverloads constructor(ctx: Context, attrs: AttributeSet? = n
     }
 
     private fun incluir(x: Float, y: Float) {
-        if (limites.isEmpty) limites.set(x, y, x, y) else limites.union(x, y)
+        // Ojo: un rectángulo de un solo punto cuenta como «vacío», por eso se usa una marca aparte.
+        if (!conLimites) {
+            limites.set(x, y, x, y)
+            conLimites = true
+        } else {
+            limites.union(x, y)
+        }
     }
 
     /** La firma recortada, con fondo transparente, o null si no hay firma. */
