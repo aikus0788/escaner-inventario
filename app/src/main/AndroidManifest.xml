@@ -31,6 +31,14 @@
             android:parentActivityName=".HomeActivity"
             android:windowSoftInputMode="adjustResize" />
 
+        <!-- Módulo: OT trabajos -->
+        <activity
+            android:name=".OtActivity"
+            android:exported="false"
+            android:label="OT trabajos"
+            android:parentActivityName=".HomeActivity"
+            android:windowSoftInputMode="adjustResize" />
+
         <!-- Módulo: Drive -->
         <activity
             android:name=".DriveActivity"

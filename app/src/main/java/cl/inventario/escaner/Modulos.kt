@@ -37,6 +37,16 @@ object Modulos {
             },
         ),
         Modulo(
+            titulo = "OT trabajos",
+            descripcion = "Llena la orden de trabajo NCR Voyix, con firma del cliente, y genérala en PDF.",
+            icono = R.drawable.ic_mod_ot,
+            pantalla = OtActivity::class.java,
+            resumen = { ctx ->
+                val ot = AlmacenOt(ctx).cargar()
+                if (ot.numero.isNotEmpty()) "OT en curso: N° ${ot.numero}" else ""
+            },
+        ),
+        Modulo(
             titulo = "Drive",
             descripcion = "Abre el Drive de la empresa en el navegador para buscar y descargar archivos.",
             icono = R.drawable.ic_mod_drive,

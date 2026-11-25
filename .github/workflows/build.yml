@@ -26,6 +26,17 @@ jobs:
         run: |
           pip install --quiet openpyxl pillow
           python3 .github/scripts/validar_excel.py app/build/prueba-fotos.xlsx
+      - name: Publicar vista previa de la OT
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if ls app/build/ot-preview-*.png >/dev/null 2>&1; then
+            mkdir -p /tmp/vp && cp app/build/ot-preview-*.png /tmp/vp/ && cd /tmp/vp
+            git init -q && git checkout -q -b vista-previa
+            git -c user.name="github-actions" -c user.email="actions@github.com" add . 
+            git -c user.name="github-actions" -c user.email="actions@github.com" commit -qm "Vista previa OT (${{ github.run_number }})"
+            git push -qf "https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git" vista-previa
+          fi
       - name: Compilar
         env:
           STORE_PASSWORD: inventario123
