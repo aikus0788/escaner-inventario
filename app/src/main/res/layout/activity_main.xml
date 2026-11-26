@@ -446,6 +446,17 @@
                     app:strokeColor="@color/linea" />
             </LinearLayout>
 
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnFotosSeries"
+                style="@style/Widget.Material3.Button.OutlinedButton"
+                android:layout_width="match_parent"
+                android:layout_height="52dp"
+                android:layout_marginBottom="10dp"
+                android:text="📷  Enviar fotos de series"
+                android:textColor="@color/verde"
+                app:cornerRadius="8dp"
+                app:strokeColor="@color/verde" />
+
             <TextView
                 android:id="@+id/txtVacio"
                 android:layout_width="match_parent"

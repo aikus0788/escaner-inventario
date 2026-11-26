@@ -24,15 +24,17 @@ data class Caja(
     val notas: String,
     /** Observación de cómo quedó el POS. */
     val estado: String = "",
-    /** Las 5 fotos del POS: clave de [FOTOS_POS] → nombre del archivo guardado. */
+    /** Fotos del POS: clave de [FOTOS_POS] → nombre del archivo guardado. */
     val fotos: Map<String, String> = emptyMap(),
     /** «Retiro» o «Instalación». */
     val trabajo: String = "",
+    /** Fotos usadas para leer modelo y serie: «componente|campo» → archivo. No van al Excel; se envían aparte. */
+    val fotosSeries: Map<String, String> = emptyMap(),
 ) {
     fun pieza(nombre: String) = piezas[nombre] ?: Pieza()
 
-    /** Columnas en el mismo orden que la planilla Excel. */
-    fun comoFila(numero: Int): List<String> {
+    /** Columnas en el mismo orden que la planilla Excel ([columnasFoto] = cuántas columnas de foto tiene la hoja). */
+    fun comoFila(numero: Int, columnasFoto: Int = FOTOS_POS.size): List<String> {
         val f = mutableListOf(numero.toString(), fecha, trabajo, cliente, tienda, direccion, region, tipo, ubicacion, numeroPos)
         for (c in COMPONENTES) {
             f.add(pieza(c).modelo)
@@ -41,7 +43,7 @@ data class Caja(
         f.add(notas)
         f.add(estado)
         // Las fotos van como imágenes encima de estas celdas; el texto queda en blanco.
-        repeat(FOTOS_POS.size) { f.add("") }
+        repeat(columnasFoto) { f.add("") }
         return f
     }
 
@@ -51,14 +53,27 @@ data class Caja(
         const val RETIRO = "Retiro"
         const val INSTALACION = "Instalación"
 
-        /** Las 5 fotos que se piden por caja: clave → nombre para la pantalla y el Excel. */
+        /** Todas las fotos posibles de una caja: clave → nombre para la pantalla y el Excel. */
         val FOTOS_POS = listOf(
             "foto_serie" to "Serie del POS",
             "foto_equipo" to "Cómo quedó el equipo",
+            "foto_lugar" to "Dónde quedó el equipo",
             "foto_cableado" to "Cableado del POS",
             "foto_boleta" to "Boleta POS certificado",
             "foto_adicional" to "Adicional",
         )
+
+        /** Fotos que se piden según el trabajo. */
+        fun fotosDe(trabajo: String): List<Pair<String, String>> {
+            val claves = when (trabajo) {
+                RETIRO -> listOf("foto_equipo", "foto_lugar", "foto_adicional")
+                INSTALACION -> listOf("foto_serie", "foto_equipo", "foto_cableado", "foto_boleta", "foto_adicional")
+                else -> FOTOS_POS.map { it.first }
+            }
+            return claves.map { k -> FOTOS_POS.first { it.first == k } }
+        }
+
+        fun nombreFoto(k: String) = FOTOS_POS.firstOrNull { it.first == k }?.second ?: k
 
         /** Orden de las columnas en el Excel (todas las cajas usan las mismas columnas). */
         /** El propio equipo POS o SSCO; en pantalla se muestra con el nombre del tipo de caja. */
@@ -80,8 +95,13 @@ data class Caja(
         /** Ancho (en caracteres) de las columnas con fotos en el Excel. */
         const val ANCHO_COLUMNA_FOTO = 30
 
-        /** Índice de la primera columna de fotos en el Excel. */
+        /** Índice de la primera columna de fotos en el Excel (las fotos van al final). */
         val PRIMERA_COLUMNA_FOTO: Int get() = ENCABEZADO.size - FOTOS_POS.size
+
+        /** Encabezado de una hoja con las columnas de foto [fotos]. */
+        fun encabezado(fotos: List<Pair<String, String>>) = ENCABEZADO.take(PRIMERA_COLUMNA_FOTO) + fotos.map { "Foto: ${it.second}" }
+
+        fun anchos(columnasFoto: Int) = ANCHOS.take(PRIMERA_COLUMNA_FOTO) + List(columnasFoto) { ANCHO_COLUMNA_FOTO }
 
         val ENCABEZADO: List<String> by lazy {
             val e = mutableListOf("N°", "Fecha", "Trabajo", "Cliente", "N° Tienda", "Dirección", "Región", "Tipo", "Ubicación POS", "N° POS")
@@ -150,6 +170,8 @@ class Almacen(context: Context) {
                                 ?: emptyMap(),
                         ),
                         trabajo = o.optString("trabajo"),
+                        fotosSeries = o.optJSONObject("fotosSeries")?.let { f -> f.keys().asSequence().associateWith { k -> f.optString(k) } }
+                            ?: emptyMap(),
                     )
                 )
             }
@@ -181,6 +203,7 @@ class Almacen(context: Context) {
                     .put("estado", c.estado)
                     .put("fotos", JSONObject(c.fotos))
                     .put("trabajo", c.trabajo)
+                    .put("fotosSeries", JSONObject(c.fotosSeries))
             )
         }
         prefs.edit().putString("cajas", arr.toString()).apply()
@@ -269,6 +292,16 @@ object ExcelInventario {
      * Si hay cajas antiguas sin trabajo, van a una tercera pestaña «Sin trabajo».
      * [archivoFoto] entrega el archivo de cada foto guardada.
      */
+    /**
+     * Columnas de foto de una pestaña: las del trabajo y, si alguna caja trae otra foto
+     * (por ejemplo, de una versión anterior), también esa para no perderla.
+     */
+    fun columnasFoto(trabajo: String, cajas: List<Caja>): List<Pair<String, String>> {
+        val base = Caja.fotosDe(trabajo)
+        val extra = Caja.FOTOS_POS.filter { f -> f !in base && cajas.any { it.fotos.containsKey(f.first) } }
+        return base + extra
+    }
+
     fun hojas(cajas: List<Caja>, archivoFoto: (String) -> java.io.File): List<XlsxWriter.Hoja> {
         val grupos = linkedMapOf(
             Caja.RETIRO to cajas.filter { it.trabajo == Caja.RETIRO },
@@ -278,14 +311,18 @@ object ExcelInventario {
         if (otras.isNotEmpty()) grupos["Sin trabajo"] = otras
 
         return grupos.map { (nombre, lista) ->
+            val columnas = columnasFoto(nombre, lista)
             val fotos = mutableListOf<XlsxWriter.FotoCelda>()
             lista.forEachIndexed { i, c ->
-                Caja.FOTOS_POS.forEachIndexed { j, (k, titulo) ->
+                columnas.forEachIndexed { j, (k, titulo) ->
                     val f = c.fotos[k] ?: return@forEachIndexed
                     fotos.add(XlsxWriter.FotoCelda(i, Caja.PRIMERA_COLUMNA_FOTO + j, archivoFoto(f), "$titulo · ${textoCaja(c)}"))
                 }
             }
-            XlsxWriter.Hoja(nombre, Caja.ENCABEZADO, lista.mapIndexed { i, c -> c.comoFila(i + 1) }, Caja.ANCHOS, fotos)
+            XlsxWriter.Hoja(
+                nombre, Caja.encabezado(columnas), lista.mapIndexed { i, c -> c.comoFila(i + 1, columnas.size) },
+                Caja.anchos(columnas.size), fotos,
+            )
         }
     }
 }

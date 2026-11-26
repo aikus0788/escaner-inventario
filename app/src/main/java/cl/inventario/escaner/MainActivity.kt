@@ -48,8 +48,11 @@ class MainActivity : AppCompatActivity() {
     private var fotoUri: Uri? = null
     private val candidatos = mutableMapOf<String, List<String>>()
 
-    /** Las 5 fotos de la caja que se está llenando: clave de Caja.FOTOS_POS → archivo guardado. */
+    /** Fotos del POS de la caja que se está llenando: clave de Caja.FOTOS_POS → archivo guardado. */
     private val fotosForm = mutableMapOf<String, String>()
+
+    /** Fotos usadas para leer modelo/serie: «componente|campo» → archivo guardado. */
+    private val fotosSeriesForm = mutableMapOf<String, String>()
 
     /** «Retiro» o «Instalación»: se elige al entrar al módulo. */
     private var trabajo = ""
@@ -97,8 +100,11 @@ class MainActivity : AppCompatActivity() {
     private fun usarFoto() {
         val uri = FileProvider.getUriForFile(this, "$packageName.files", File(cacheDir, "foto_actual.jpg"))
         val k = objetivo
-        // Las 5 fotos del POS se guardan; las de modelo y serie solo se usan para leer el dato.
-        if (Caja.FOTOS_POS.any { it.first == k }) guardarFoto(k) else procesarFoto(uri, k)
+        // Las fotos del POS van a su espacio; las de modelo y serie se leen y además se guardan para enviarlas aparte.
+        if (Caja.FOTOS_POS.any { it.first == k }) guardarFoto(k) else {
+            guardarFotoSerie(k)
+            procesarFoto(uri, k)
+        }
     }
 
     private val abrirExcel = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
@@ -120,6 +126,11 @@ class MainActivity : AppCompatActivity() {
                 val k = e.key
                 val v = e.value
                 if (k is String && v is String) fotosForm[k] = v
+            }
+            (it.getSerializable("fotosSeriesForm") as? HashMap<*, *>)?.entries?.forEach { e ->
+                val k = e.key
+                val v = e.value
+                if (k is String && v is String) fotosSeriesForm[k] = v
             }
         }
 
@@ -176,6 +187,7 @@ class MainActivity : AppCompatActivity() {
         b.btnExportar.setOnClickListener { menuExportar() }
         b.btnNuevo.setOnClickListener { nuevoExcel() }
         b.btnCargar.setOnClickListener { cargarExcel() }
+        b.btnFotosSeries.setOnClickListener { menuFotosSeries() }
         b.btnVolver.setOnClickListener { finish() }
 
         refrescar()
@@ -186,6 +198,7 @@ class MainActivity : AppCompatActivity() {
         outState.putString("objetivo", objetivo)
         fotoUri?.let { outState.putString("fotoUri", it.toString()) }
         outState.putSerializable("fotosForm", HashMap(fotosForm))
+        outState.putSerializable("fotosSeriesForm", HashMap(fotosSeriesForm))
         outState.putString("trabajo", trabajo)
     }
 
@@ -459,15 +472,32 @@ class MainActivity : AppCompatActivity() {
 
     private fun mostrarTrabajo() {
         b.txtTrabajo.text = if (trabajo.isEmpty()) "Elegir trabajo ▾" else "$trabajo ▾"
+        if (editandoId == null) {
+            construirFotos()
+            actualizarVistaFotos()
+        }
+    }
+
+    /** Trabajo que manda en las fotos: el de la caja que se edita o el elegido al entrar. */
+    private fun trabajoFotos(): String =
+        editandoId?.let { id -> filas.firstOrNull { it.id == id }?.trabajo }?.takeIf { it.isNotEmpty() } ?: trabajo
+
+    /** Espacios de foto que se muestran: los del trabajo y cualquier otra foto que ya tenga la caja. */
+    private fun espaciosFoto(): List<Pair<String, String>> {
+        val base = Caja.fotosDe(trabajoFotos())
+        return base + Caja.FOTOS_POS.filter { it !in base && fotosForm.containsKey(it.first) }
     }
 
     // ---------------- Fotos del POS ----------------
 
-    /** Arma los 5 espacios de foto: serie, equipo, cableado, boleta y adicional. */
+    /**
+     * Arma los espacios de foto según el trabajo:
+     * Instalación → serie, equipo, cableado, boleta y adicional; Retiro → cómo quedó, dónde quedó y adicional.
+     */
     private fun construirFotos() {
         b.contenedorFotos.removeAllViews()
         fotosUI.clear()
-        Caja.FOTOS_POS.forEachIndexed { i, (k, nombre) ->
+        espaciosFoto().forEachIndexed { i, (k, nombre) ->
             val v = layoutInflater.inflate(R.layout.item_foto_pos, b.contenedorFotos, false)
             v.findViewById<TextView>(R.id.txtTitulo).text = "${i + 1}. $nombre"
             val ui = FotoUI(v.findViewById(R.id.imgFoto), v.findViewById(R.id.txtEstado), v.findViewById(R.id.btnQuitar))
@@ -521,16 +551,34 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    /** Guarda una copia de la foto usada para leer modelo/serie ([k] = «componente|campo»). */
+    private fun guardarFotoSerie(k: String) {
+        val original = File(cacheDir, "foto_actual.jpg")
+        val copia = File(cacheDir, "foto_serie_${System.nanoTime()}.jpg")
+        try { original.copyTo(copia, overwrite = true) } catch (_: Exception) { return }
+        Thread {
+            val nombre = try { Fotos.guardarDesde(this, copia) } catch (_: Exception) { null }
+            copia.delete()
+            if (nombre != null) runOnUiThread { fotosSeriesForm[k] = nombre }
+        }.start()
+    }
+
     /** Borra del teléfono las fotos que ya no pertenecen a ninguna caja. */
     private fun limpiarFotosHuerfanas() {
-        val enUso = filas.flatMap { it.fotos.values } + fotosForm.values
+        val enUso = filas.flatMap { it.fotos.values + it.fotosSeries.values } + fotosForm.values + fotosSeriesForm.values
         try { Fotos.limpiarHuerfanas(this, enUso) } catch (_: Exception) {}
     }
 
-    /** Fotos del formulario que corresponden a los 5 espacios. */
+    /** Fotos del formulario que corresponden a los espacios en pantalla. */
     private fun fotosValidas(): Map<String, String> {
-        val claves = Caja.FOTOS_POS.map { it.first }.toSet()
+        val claves = espaciosFoto().map { it.first }.toSet()
         return fotosForm.filterKeys { it in claves }
+    }
+
+    /** Fotos de series de los componentes que tiene la caja. */
+    private fun fotosSeriesValidas(): Map<String, String> {
+        val comps = Caja.POR_TIPO[tipoActual()].orEmpty().toSet()
+        return fotosSeriesForm.filterKeys { it.substringBefore('|') in comps }
     }
 
     // ---------------- Guardar / editar ----------------
@@ -549,6 +597,7 @@ class MainActivity : AppCompatActivity() {
         notas = b.edtNotas.text?.toString()?.trim().orEmpty(),
         estado = b.edtEstado.text?.toString()?.trim().orEmpty(),
         fotos = fotosValidas(),
+        fotosSeries = fotosSeriesValidas(),
         // Al editar, la caja conserva su trabajo original.
         trabajo = filas.firstOrNull { it.id == id && editandoId != null }?.trabajo?.takeIf { it.isNotEmpty() } ?: trabajo,
     )
@@ -632,9 +681,11 @@ class MainActivity : AppCompatActivity() {
         b.edtNotas.setText("")
         b.edtEstado.setText("")
         fotosForm.clear()
-        actualizarVistaFotos()
+        fotosSeriesForm.clear()
         construirPiezas(tipoActual(), emptyMap())
         editandoId = null
+        construirFotos()
+        actualizarVistaFotos()
         b.btnGuardar.text = "GUARDAR CAJA"
         b.barEdicion.visibility = View.GONE
         refrescar()
@@ -656,7 +707,10 @@ class MainActivity : AppCompatActivity() {
         b.edtFecha.setText(c.fecha)
         fotosForm.clear()
         fotosForm.putAll(c.fotos)
+        fotosSeriesForm.clear()
+        fotosSeriesForm.putAll(c.fotosSeries)
         ponerTipo(c.tipo, c.piezas)
+        construirFotos()
         b.edtUbicacion.setText(c.ubicacion)
         b.edtNumeroPos.setText(c.numeroPos)
         b.edtNotas.setText(c.notas)
@@ -791,6 +845,58 @@ class MainActivity : AppCompatActivity() {
         limpiarCaja()
         val nFotos = cajas.sumOf { it.fotos.size }
         aviso("Excel cargado: ${cajas.size} cajas" + (if (nFotos > 0) " y $nFotos fotos" else "") + ". Puedes seguir agregando.")
+    }
+
+    // ---------------- Fotos de series (se envían aparte del Excel) ----------------
+
+    private fun menuFotosSeries() {
+        val conFotos = filas.filter { FotosSeries.cuantas(it) > 0 }
+        if (conFotos.isEmpty()) {
+            MaterialAlertDialogBuilder(this)
+                .setTitle("Fotos de series")
+                .setMessage("Todavía no hay fotos de series guardadas.\n\nSe guardan solas cuando sacas (o eliges) la foto del modelo o la serie de un componente y luego tocas «Guardar caja».")
+                .setPositiveButton("Entendido", null)
+                .show()
+            return
+        }
+        val total = conFotos.sumOf { FotosSeries.cuantas(it) }
+        val opciones = listOf("Todas las cajas ($total fotos)") + conFotos.map { c ->
+            val n = FotosSeries.cuantas(c)
+            "${c.trabajo.ifEmpty { "Sin trabajo" }} · ${textoCaja(c)} ($n ${if (n == 1) "foto" else "fotos"})"
+        }
+        MaterialAlertDialogBuilder(this)
+            .setTitle("Enviar fotos de series")
+            .setItems(opciones.toTypedArray()) { _, i -> enviarFotosSeries(if (i == 0) conFotos else listOf(conFotos[i - 1])) }
+            .setNegativeButton("Cancelar", null)
+            .show()
+    }
+
+    private fun enviarFotosSeries(cajas: List<Caja>) {
+        val espera = MaterialAlertDialogBuilder(this)
+            .setTitle("Preparando fotos…")
+            .setMessage("Se agrega a cada foto el componente, la serie y los datos de la caja.")
+            .setCancelable(false)
+            .show()
+        Thread {
+            val r = try { Result.success(FotosSeries.preparar(this, cajas, File(cacheDir, "fotos_series"))) } catch (e: Exception) { Result.failure(e) }
+            runOnUiThread {
+                espera.dismiss()
+                r.fold({ archivos ->
+                    if (archivos.isEmpty()) { aviso("No se encontraron las fotos en el teléfono."); return@fold }
+                    val uris = ArrayList(archivos.map { FileProvider.getUriForFile(this, "$packageName.files", it) })
+                    val c0 = cajas.first()
+                    val texto = "Fotos de series · " + listOf(c0.cliente, c0.tienda.takeIf { it.isNotBlank() }?.let { "Tienda $it" })
+                        .filterNotNull().filter { it.isNotBlank() }.joinToString(" ") + " · ${archivos.size} fotos"
+                    val intent = Intent(Intent.ACTION_SEND_MULTIPLE).apply {
+                        type = "image/jpeg"
+                        putParcelableArrayListExtra(Intent.EXTRA_STREAM, uris)
+                        putExtra(Intent.EXTRA_TEXT, texto)
+                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    }
+                    try { startActivity(Intent.createChooser(intent, "Enviar fotos a…")) } catch (e: Exception) { aviso("No se pudieron enviar: ${e.message}") }
+                }) { e -> aviso("No se pudieron preparar las fotos: ${e.message}") }
+            }
+        }.start()
     }
 
     // ---------------- Exportar ----------------
