@@ -172,6 +172,25 @@ export function elegir(titulo, opciones, { mensaje = '', cancelar = 'Cancelar', 
   });
 }
 
+/** Pide un texto en una ventana; devuelve lo escrito o null. */
+export function pedirTexto(titulo, mensaje = '', placeholder = '') {
+  return new Promise((ok) => {
+    const campo = el('input', { type: 'text', class: 'texto-modal', placeholder, autocapitalize: 'words' });
+    const fondo = el('div', { class: 'modal-fondo' });
+    const cerrar = (v) => { fondo.remove(); ok(v); };
+    const aceptar = () => cerrar(campo.value.trim() || null);
+    campo.addEventListener('keydown', (e) => { if (e.key === 'Enter') aceptar(); });
+    fondo.append(el('div', { class: 'modal', role: 'dialog', 'aria-label': titulo },
+      el('h3', {}, titulo),
+      mensaje ? el('p', { class: 'modal-msg' }, mensaje) : null,
+      campo,
+      el('div', { class: 'modal-opciones' }, el('button', { class: 'opcion', type: 'button', onclick: aceptar }, 'Agregar')),
+      el('button', { class: 'boton-texto', type: 'button', onclick: () => cerrar(null) }, 'Cancelar')));
+    document.body.append(fondo);
+    setTimeout(() => campo.focus(), 50);
+  });
+}
+
 /** Confirmación: devuelve true/false. */
 export async function confirmar(titulo, mensaje, si = 'Aceptar', no = 'Cancelar') {
   return (await elegir(titulo, [si], { mensaje, cancelar: no })) === 0;

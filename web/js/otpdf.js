@@ -23,6 +23,40 @@ const X_DATOS = 219.5;
 const X_FIN = 534.5;
 export const MAX_LINEAS = 9;
 
+const ALTO_COMENTARIO = 38;
+
+/** Comentario de una imagen en hasta 2 líneas, achicando la letra si hace falta. */
+function escribirComentario(pg, texto, x0, x1, top, bottom, fuente, color, y, etiqueta = null) {
+  const sangria = etiqueta ? etiqueta.fuente.widthOfTextAtSize(etiqueta.texto, 9.5) : 0;
+  let s = 9.5;
+  let ls;
+  for (;;) {
+    ls = [];
+    let actual = '';
+    for (const palabra of texto.split(' ')) {
+      const prueba = actual ? `${actual} ${palabra}` : palabra;
+      const disponible = (x1 - x0) - (ls.length === 0 ? sangria * s / 9.5 : 0);
+      if (fuente.widthOfTextAtSize(prueba, s) <= disponible || !actual) actual = prueba;
+      else { ls.push(actual); actual = palabra; }
+    }
+    ls.push(actual);
+    if (ls.length <= 2 || s <= 6.5) break;
+    s -= 0.5;
+  }
+  const n = Math.min(ls.length, 2);
+  const base0 = top + (bottom - top - (n - 1) * s * 1.25) / 2 + s * 0.35;
+  let x = x0;
+  if (etiqueta) {
+    pg.drawText(etiqueta.texto, { x: x0, y: y(base0), size: s, font: etiqueta.fuente, color: etiqueta.color });
+    x = x0 + etiqueta.fuente.widthOfTextAtSize(etiqueta.texto, s);
+  }
+  ls.slice(0, 2).forEach((l, i) => {
+    let t = l;
+    if (i === 1 && ls.length > 2) t += '…';
+    pg.drawText(t, { x: i === 0 ? x : x0, y: y(base0 + i * s * 1.25), size: s, font: fuente, color });
+  });
+}
+
 /** Deja solo caracteres que la fuente estándar del PDF puede escribir. */
 const limpiar = (s) => (s || '').replace(/[‘’]/g, "'").replace(/[“”]/g, '"').replace(/[–—]/g, '-')
   .replace(/[^\x20-\x7E -ÿ…]/g, '');
@@ -32,7 +66,7 @@ const limpiar = (s) => (s || '').replace(/[‘’]/g, "'").replace(/[“”]/g, 
  *       observaciones, recibeNombre, recibeCargo }
  * firmaPng: bytes PNG (fondo blanco) o null. logoJpg: bytes del logo NCR Voyix.
  */
-export async function crearPdfOt(ot, firmaPng, logoJpg, imagenes = []) {
+export async function crearPdfOt(ot, firmaPng, logoJpg, imagenes = [], comentarios = []) {
   const { PDFDocument, StandardFonts, rgb } = window.PDFLib;
   const doc = await PDFDocument.create();
   doc.setTitle(`Orden de trabajo ${ot.numero || ''}`.trim());
@@ -148,13 +182,20 @@ export async function crearPdfOt(ot, firmaPng, logoJpg, imagenes = []) {
       const [x0, t0, x1, t1] = cajas[j];
       pg.drawText(`Imagen ${i + j + 1} de ${imagenes.length}`, { x: x0, y: y(t0 + 11), size: 11, font: negrita, color: VERDE });
       const top = t0 + 18;
-      pg.drawRectangle({ x: x0, y: y(t1), width: x1 - x0, height: t1 - top, borderColor: rgb(214 / 255, 217 / 255, 226 / 255), borderWidth: 0.8 });
+      const gris = rgb(214 / 255, 217 / 255, 226 / 255);
+      pg.drawRectangle({ x: x0, y: y(t1), width: x1 - x0, height: t1 - top, borderColor: gris, borderWidth: 0.8 });
+      const com = limpiar((comentarios[i + j] || '').replace(/\s+/g, ' ').trim());
+      const fondo = com ? t1 - ALTO_COMENTARIO : t1;
+      if (com) {
+        pg.drawLine({ start: { x: x0, y: y(fondo) }, end: { x: x1, y: y(fondo) }, thickness: 0.8, color: gris });
+        escribirComentario(pg, `Comentario: ${com}`, x0 + 6, x1 - 6, fondo, t1, normal, AZUL, y);
+      }
       try {
         const img = await doc.embedJpg(imagenes[i + j]);
-        const e = Math.min((x1 - x0 - 8) / img.width, (t1 - top - 8) / img.height);
+        const e = Math.min((x1 - x0 - 8) / img.width, (fondo - top - 8) / img.height);
         const w = img.width * e;
         const h = img.height * e;
-        pg.drawImage(img, { x: (x0 + x1) / 2 - w / 2, y: y((top + t1) / 2 + h / 2), width: w, height: h });
+        pg.drawImage(img, { x: (x0 + x1) / 2 - w / 2, y: y((top + fondo) / 2 + h / 2), width: w, height: h });
       } catch (_) { /* imagen dañada: se deja el recuadro */ }
     }
     pg.drawText('Preparado por Infomaxis', { x: 51.4, y: y(815.7), size: 11, font: normal, color: NEGRO });
@@ -169,7 +210,7 @@ const ANCHOS_IMX = [0.3, 0.12, 0.18, 0.19, 0.21];
 const TITULOS_IMX = ['Tipo actividad', '# Equipos', 'Modelo', 'Tipo equipo', 'Serie'];
 
 /** estados: lista de casillas (la misma de la app). logoPng: bytes del logo IMX. */
-export async function crearPdfOtImx(ot, firmaPng, logoPng, imagenes = [], estados = []) {
+export async function crearPdfOtImx(ot, firmaPng, logoPng, imagenes = [], estados = [], comentarios = []) {
   const { PDFDocument, StandardFonts, rgb } = window.PDFLib;
   const doc = await PDFDocument.create();
   doc.setTitle(`Orden de trabajo IMX ${ot.numero || ''}`.trim());
@@ -324,11 +365,17 @@ export async function crearPdfOtImx(ot, firmaPng, logoPng, imagenes = [], estado
       texto(pg, `Imagen ${i + j + 1} de ${imagenes.length}`, xa, ta + 2, 10.5, NAR2, { bold: true });
       const top = ta + 10;
       caja(pg, xa, top, xb, tb, { borderColor: LINEA_C, borderWidth: 0.8 });
+      const com = limpiar((comentarios[i + j] || '').replace(/\s+/g, ' ').trim());
+      const fondo = com ? tb - ALTO_COMENTARIO : tb;
+      if (com) {
+        linea(pg, xa, fondo, xb, fondo, LINEA_C, 0.7);
+        escribirComentario(pg, com, xa + 8, xb - 8, fondo, tb, normal, TINTA, y, { texto: 'Comentario: ', fuente: negrita, color: NAR2 });
+      }
       try {
         const img = await doc.embedJpg(imagenes[i + j]);
-        const e = Math.min((xb - xa - 8) / img.width, (tb - top - 8) / img.height);
+        const e = Math.min((xb - xa - 8) / img.width, (fondo - top - 8) / img.height);
         const w = img.width * e, h = img.height * e;
-        pg.drawImage(img, { x: (xa + xb) / 2 - w / 2, y: y((top + tb) / 2 + h / 2), width: w, height: h });
+        pg.drawImage(img, { x: (xa + xb) / 2 - w / 2, y: y((top + fondo) / 2 + h / 2), width: w, height: h });
       } catch (_) { /* imagen dañada: queda el recuadro */ }
     }
     pie(pg, i / 2 + 2);

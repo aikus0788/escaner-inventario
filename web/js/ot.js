@@ -1,11 +1,12 @@
 // Módulo «OT trabajos» (versión web): orden de trabajo NCR Voyix o IMX, con firma y PDF.
 import {
-  el, db, aviso, elegir, confirmar, conEspera, pedirImagen, pedirImagenes, compartirArchivo, descargarArchivo, campoConLista, cabecera,
+  el, db, aviso, elegir, confirmar, conEspera, pedirTexto, pedirImagen, pedirImagenes, compartirArchivo, descargarArchivo, campoConLista, cabecera,
   hoy, aIso, deIso, comprimir, guardarFoto, leerFoto, CLIENTES, POR_TIPO, COMPONENTES, etiqueta,
 } from './base.js';
 import { leerEtiqueta } from './lector.js';
 import { crearPdfOt, crearPdfOtImx, MAX_LINEAS } from './otpdf.js';
 import { cargarCajas } from './inventario.js';
+import { marcarImagen } from './marcar.js';
 
 const ESTADOS = ['Finalizada', 'Pendiente', 'Parcial', 'Reprogramada', 'Cancelada'];
 const OTROS = 'Otros';
@@ -21,6 +22,9 @@ export async function pantallaOt(app) {
   document.title = 'OT trabajos · Infomaxis';
   const guardada = (await db.get('kv', 'ot')) || {};
   const ultimoTecnico = (await db.get('kv', 'tecnico')) || '';
+  // Lista de clientes: los fijos, los agregados con «Otros» y al final «Otros».
+  const clientesExtra = (await db.get('kv', 'clientesExtra')) || [];
+  const listaClientes = [...CLIENTES, ...clientesExtra.filter((c) => !CLIENTES.some((x) => x.toLowerCase() === c.toLowerCase())), OTROS];
 
   const input = (attrs = {}) => el('input', { type: 'text', ...attrs });
   const f = {
@@ -258,8 +262,24 @@ export async function pantallaOt(app) {
     guardarBorrador();
   }
 
+  // «Otros» en Cliente: se escribe un cliente nuevo y queda en la lista.
+  f.cliente.addEventListener('change', async () => {
+    if (f.cliente.value.trim().toLowerCase() !== OTROS.toLowerCase()) return;
+    f.cliente.value = '';
+    const nombre = await pedirTexto('Nuevo cliente', 'Escribe el nombre. Quedará en la lista para las próximas OT.', 'Nombre del cliente');
+    if (!nombre) return;
+    if (!listaClientes.some((c) => c.toLowerCase() === nombre.toLowerCase())) {
+      listaClientes.splice(listaClientes.length - 1, 0, nombre);
+      clientesExtra.push(nombre);
+      await db.set('kv', 'clientesExtra', clientesExtra);
+    }
+    f.cliente.value = listaClientes.find((c) => c.toLowerCase() === nombre.toLowerCase());
+    guardarBorrador();
+  });
+
   // ---------- Imágenes ----------
   let imagenes = [];
+  let comentarios = {};
   const urlsImg = [];
   const cuentaImg = el('small');
   const tiraImg = el('div', { class: 'tira-imagenes' });
@@ -273,8 +293,8 @@ export async function pantallaOt(app) {
       const u = URL.createObjectURL(b);
       urlsImg.push(u);
       nodos.push(el('div', { class: 'imagen-ot', style: `background-image:url("${u}")` },
-        el('button', { class: 'ver', type: 'button', 'aria-label': `Ver imagen ${i + 1}`, onclick: () => window.open(u, '_blank') }),
-        el('span', { class: 'n' }, String(i + 1)),
+        el('button', { class: 'ver', type: 'button', 'aria-label': `Imagen ${i + 1}`, onclick: () => opcionesImagen(id, i, u) }),
+        el('span', { class: 'n' }, comentarios[id] ? `${i + 1} 💬` : String(i + 1)),
         el('button', { class: 'quitar', type: 'button', 'aria-label': `Quitar imagen ${i + 1}`, onclick: () => quitarImagen(id) }, '✕')));
     }
     tiraImg.replaceChildren(...nodos);
@@ -285,17 +305,45 @@ export async function pantallaOt(app) {
   async function agregarImagenes() {
     const files = await pedirImagenes();
     if (!files.length) return;
+    const nuevas = [];
     await conEspera(files.length === 1 ? 'Agregando imagen…' : `Agregando ${files.length} imágenes…`, async () => {
       for (const f of files) {
-        try { imagenes.push(await guardarFoto(await comprimir(f), 'ot')); } catch (_) { aviso('Una imagen no se pudo agregar.'); }
+        try { nuevas.push(await guardarFoto(await comprimir(f), 'ot')); } catch (_) { aviso('Una imagen no se pudo agregar.'); }
       }
     });
+    imagenes.push(...nuevas);
     await pintarImagenes();
     guardarBorrador();
+    // Cada imagen nueva pasa por el editor para marcarla y comentarla (se puede dejar tal cual con «Listo»).
+    for (const id of nuevas) {
+      if (!(await editarImagen(id))) break;
+    }
+  }
+
+  /** Abre el editor de marcas; devuelve false si se canceló. */
+  async function editarImagen(id) {
+    const blob = await leerFoto(id);
+    if (!blob) return true;
+    const i = imagenes.indexOf(id);
+    const r = await marcarImagen(blob, comentarios[id] || '', `Imagen ${i + 1} de ${imagenes.length}`);
+    if (!r) return false;
+    if (r.blob) await db.set('fotos', id, r.blob);
+    if (r.comentario) comentarios[id] = r.comentario; else delete comentarios[id];
+    await pintarImagenes();
+    guardarBorrador();
+    return true;
+  }
+
+  async function opcionesImagen(id, i, url) {
+    const c = comentarios[id];
+    const j = await elegir(`Imagen ${i + 1}`, ['✏️  Marcar y comentar', '🔍  Ver imagen'], { mensaje: c ? `Comentario: ${c}` : 'Sin comentario.', cancelar: 'Cerrar' });
+    if (j === 0) await editarImagen(id);
+    else if (j === 1) window.open(url, '_blank');
   }
 
   async function quitarImagen(id) {
     imagenes = imagenes.filter((x) => x !== id);
+    delete comentarios[id];
     await db.del('fotos', id);
     await pintarImagenes();
     guardarBorrador();
@@ -314,6 +362,7 @@ export async function pantallaOt(app) {
       observaciones: f.observaciones.value.trim(), recibeNombre: f.recibeNombre.value.trim(), recibeCargo: f.recibeCargo.value.trim(),
       firma: firmaComoImagen(),
       imagenes: [...imagenes],
+      comentarios: Object.fromEntries(imagenes.filter((id) => comentarios[id]).map((id) => [id, comentarios[id]])),
     };
   }
   let temporizador;
@@ -344,6 +393,7 @@ export async function pantallaOt(app) {
     firmaGuardada = ot.firma || null;
     dibujarFirma();
     imagenes = [...(ot.imagenes || [])];
+    comentarios = { ...(ot.comentarios || {}) };
     pintarImagenes();
   }
 
@@ -375,11 +425,12 @@ export async function pantallaOt(app) {
         const logo = new Uint8Array(await (await fetch(tipoOt === 'IMX' ? 'img/logo_imx.png' : 'img/logo_ncr_voyix.jpg')).arrayBuffer());
         const firma = ot.firma ? new Uint8Array(await (await fetch(ot.firma)).arrayBuffer()) : null;
         const imgs = [];
+        const textos = [];
         for (const id of ot.imagenes) {
           const b = await leerFoto(id);
-          if (b) imgs.push(new Uint8Array(await b.arrayBuffer()));
+          if (b) { imgs.push(new Uint8Array(await b.arrayBuffer())); textos.push(ot.comentarios?.[id] || ''); }
         }
-        return tipoOt === 'IMX' ? crearPdfOtImx(ot, firma, logo, imgs, ESTADOS) : crearPdfOt(ot, firma, logo, imgs);
+        return tipoOt === 'IMX' ? crearPdfOtImx(ot, firma, logo, imgs, ESTADOS, textos) : crearPdfOt(ot, firma, logo, imgs, textos);
       });
     } catch (e) {
       aviso(`No se pudo crear el PDF: ${e.message || e}`);
@@ -396,7 +447,7 @@ export async function pantallaOt(app) {
   const contenido = el('div', { class: 'contenido' },
       el('div', { class: 'seccion' }, 'Seguimiento'),
       el('div', { class: 'tarjeta' },
-        campo('Número de orden', f.numero), campo('Fecha', f.fecha), campo('Cliente', f.cliente, CLIENTES),
+        campo('Número de orden', f.numero), campo('Fecha', f.fecha), campo('Cliente', f.cliente, listaClientes),
         campo('Local', f.local), campo('Dirección', f.direccion), campo('Nombre técnico', f.tecnico), campo('Estado actividad', f.estado, ESTADOS)),
       el('div', { class: 'seccion' }, 'Detalle de actividad', cuenta),
       el('button', { class: 'boton-texto', type: 'button', onclick: copiarDesdeInventario }, 'Copiar equipos desde Inventario'),

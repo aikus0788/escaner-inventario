@@ -3,7 +3,7 @@ const VERSION = '__VERSION__';
 const CACHE = `infomaxis-${VERSION}`;
 const BASE = [
   './', 'index.html', 'app.css', 'manifest.webmanifest',
-  'js/app.js', 'js/base.js', 'js/inventario.js', 'js/ot.js', 'js/lector.js', 'js/xlsx.js', 'js/otpdf.js',
+  'js/app.js', 'js/base.js', 'js/inventario.js', 'js/ot.js', 'js/lector.js', 'js/xlsx.js', 'js/otpdf.js', 'js/marcar.js',
   'vendor/zxing.min.js', 'vendor/fflate.min.js', 'vendor/pdf-lib.min.js',
   'vendor/tesseract/tesseract.min.js', 'vendor/tesseract/worker.min.js', 'vendor/tesseract/lang/eng.traineddata.gz',
   'img/logo_infomaxis.png', 'img/logo_ncr_voyix.jpg', 'img/logo_imx.png', 'img/apple-touch-icon.png', 'img/icono-192.png', 'img/icono-512.png',

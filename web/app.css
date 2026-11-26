@@ -162,3 +162,24 @@ button:focus-visible, .chip:focus-visible { outline: 3px solid var(--naranja); o
 .imagen-ot .ver { position: absolute; inset: 0; border: 0; background: none; cursor: pointer; border-radius: 8px; }
 .imagen-ot .n { position: absolute; left: 0; bottom: 0; background: var(--azul); color: var(--blanco); font-size: 11px; font-weight: 700; padding: 1px 6px; border-radius: 0 6px 0 8px; pointer-events: none; }
 .imagen-ot .quitar { position: absolute; top: 4px; right: 4px; width: 28px; height: 28px; border-radius: 14px; border: 0; background: rgba(179, 38, 30, .85); color: var(--blanco); font-size: 14px; cursor: pointer; }
+
+/* Editor para marcar imágenes de la OT */
+body.sin-scroll { overflow: hidden; }
+.marcar { position: fixed; inset: 0; z-index: 45; display: flex; flex-direction: column; background: #181A20; }
+.marcar-barra { display: flex; align-items: center; gap: 8px; padding: calc(env(safe-area-inset-top) + 8px) 12px 8px; color: var(--blanco); }
+.marcar-barra strong { flex: 1; text-align: center; font-size: 16px; }
+.marcar-barra .boton { width: auto; min-height: 40px; padding: 8px 18px; }
+.boton-texto.blanco { color: var(--blanco); }
+.marcar-zona { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+.marcar-lienzo { touch-action: none; display: block; }
+.marcar-panel { background: var(--blanco); padding: 10px 12px calc(env(safe-area-inset-bottom) + 10px); display: flex; flex-direction: column; gap: 8px; }
+.marcar-fila { display: flex; align-items: center; gap: 10px; justify-content: space-between; }
+.marcar-herramientas { display: flex; border: 1px solid var(--azul); border-radius: 10px; overflow: hidden; }
+.marcar-herramientas button { border: 0; background: var(--blanco); color: var(--azul); font-weight: 700; font-size: 13px; padding: 8px 10px; cursor: pointer; }
+.marcar-herramientas button + button { border-left: 1px solid var(--azul); }
+.marcar-herramientas button[aria-pressed="true"] { background: var(--azul); color: var(--blanco); }
+.marcar-colores { display: flex; gap: 10px; flex: 1; }
+.marcar-colores .color { width: 30px; height: 30px; border-radius: 15px; border: 1px solid #bbb; cursor: pointer; padding: 0; }
+.marcar-colores .color[aria-pressed="true"] { border: 3px solid var(--tinta); }
+.marcar-panel textarea { width: 100%; box-sizing: border-box; border: 1px solid var(--linea); border-radius: 8px; padding: 8px 10px; font: inherit; font-size: 15px; resize: none; }
+.modal input.texto-modal { width: 100%; box-sizing: border-box; border: 1px solid var(--linea); border-radius: 8px; padding: 10px; font: inherit; font-size: 16px; margin: 6px 0 4px; }
