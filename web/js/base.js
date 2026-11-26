@@ -23,10 +23,18 @@ export const POR_TIPO = {
 export const FOTOS_POS = [
   ['foto_serie', 'Serie del POS'],
   ['foto_equipo', 'Cómo quedó el equipo'],
+  ['foto_lugar', 'Dónde quedó el equipo'],
   ['foto_cableado', 'Cableado del POS'],
   ['foto_boleta', 'Boleta POS certificado'],
   ['foto_adicional', 'Adicional'],
 ];
+/** Fotos que se piden según el trabajo (Retiro: cómo quedó, dónde quedó y adicional). */
+export function fotosDe(trabajo) {
+  const claves = trabajo === RETIRO ? ['foto_equipo', 'foto_lugar', 'foto_adicional']
+    : trabajo === INSTALACION ? ['foto_serie', 'foto_equipo', 'foto_cableado', 'foto_boleta', 'foto_adicional']
+      : FOTOS_POS.map(([k]) => k);
+  return claves.map((k) => FOTOS_POS.find(([f]) => f === k));
+}
 export const etiqueta = (nombre, tipo) => (nombre === PRINCIPAL ? (tipo || PRINCIPAL) : nombre);
 
 // ---------------- Guardado (IndexedDB) ----------------

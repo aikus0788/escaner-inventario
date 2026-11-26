@@ -1,6 +1,6 @@
 // Excel (.xlsx) del inventario, con el mismo formato que la app de Android:
 // pestañas «Retiro» e «Instalación», una fila por caja y las 5 fotos dentro de sus celdas.
-import { COMPONENTES, FOTOS_POS, POS, SSCO, RETIRO, INSTALACION, etiqueta } from './base.js';
+import { COMPONENTES, FOTOS_POS, POS, SSCO, RETIRO, INSTALACION, etiqueta, fotosDe } from './base.js';
 
 const ENC = new TextEncoder();
 const EMU = 9525;
@@ -18,13 +18,19 @@ export const ENCABEZADO = (() => {
 const ANCHOS = [6, 12, 12, 16, 11, 34, 26, 8, 14, 9, ...COMPONENTES.flatMap(() => [20, 20]), 30, 34, ...FOTOS_POS.map(() => 30)];
 export const PRIMERA_COLUMNA_FOTO = ENCABEZADO.length - FOTOS_POS.length;
 
-export function comoFila(c, n) {
+/** Columnas de foto de una pestaña: las del trabajo y cualquier otra que traiga alguna caja (versiones anteriores). */
+export function columnasFoto(trabajo, cajas) {
+  const base = fotosDe(trabajo);
+  return [...base, ...FOTOS_POS.filter((f) => !base.includes(f) && cajas.some((c) => c.fotos?.[f[0]]))];
+}
+
+export function comoFila(c, n, columnasFoto = FOTOS_POS.length) {
   const f = [String(n), c.fecha, c.trabajo, c.cliente, c.tienda, c.direccion, c.region, c.tipo, c.ubicacion, c.numeroPos];
   for (const comp of COMPONENTES) {
     const p = c.piezas?.[comp] || {};
     f.push(p.modelo || '', p.serie || '');
   }
-  f.push(c.notas, c.estado, ...FOTOS_POS.map(() => ''));
+  f.push(c.notas, c.estado, ...Array(columnasFoto).fill(''));
   return f.map((x) => x ?? '');
 }
 
@@ -123,10 +129,12 @@ export function escribirXlsx(hojas) {
     const conFoto = new Set(fotos.map((f) => f.fila));
     let s = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">';
     s += `<sheetViews><sheetView${i === 0 ? ' tabSelected="1"' : ''} workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>`;
-    s += '<cols>' + ANCHOS.map((w, j) => `<col min="${j + 1}" max="${j + 1}" width="${w}" customWidth="1"/>`).join('') + '</cols><sheetData>';
-    s += fila(1, ENCABEZADO, 1);
+    const enc = h.encabezado || ENCABEZADO;
+    const anchos = [...ANCHOS.slice(0, PRIMERA_COLUMNA_FOTO), ...enc.slice(PRIMERA_COLUMNA_FOTO).map(() => 30)];
+    s += '<cols>' + anchos.map((w, j) => `<col min="${j + 1}" max="${j + 1}" width="${w}" customWidth="1"/>`).join('') + '</cols><sheetData>';
+    s += fila(1, enc, 1);
     h.filas.forEach((f, j) => { s += conFoto.has(j) ? fila(j + 2, f, 3, (FOTO_ALTO + 2 * MARGEN) * 0.75) : fila(j + 2, f, 2); });
-    s += `</sheetData><autoFilter ref="A1:${columna(ENCABEZADO.length - 1)}${h.filas.length + 1}"/>`;
+    s += `</sheetData><autoFilter ref="A1:${columna(enc.length - 1)}${h.filas.length + 1}"/>`;
     if (fotos.length) s += '<drawing r:id="rId1"/>';
     s += '</worksheet>';
     poner(`xl/worksheets/sheet${n}.xml`, s);
@@ -167,15 +175,17 @@ export async function hojasInventario(cajas, fotoBytes) {
   if (otras.length) grupos.push(['Sin trabajo', otras]);
   const hojas = [];
   for (const [nombre, lista] of grupos) {
+    const cols = columnasFoto(nombre, lista);
     const fotos = [];
     for (const [i, c] of lista.entries()) {
-      for (const [j, [k, titulo]] of FOTOS_POS.entries()) {
+      for (const [j, [k, titulo]] of cols.entries()) {
         const id = c.fotos?.[k];
         const bytes = id ? await fotoBytes(id) : null;
         if (bytes?.length) fotos.push({ fila: i, columna: PRIMERA_COLUMNA_FOTO + j, bytes, descripcion: `${titulo} · ${textoCaja(c)}` });
       }
     }
-    hojas.push({ nombre, filas: lista.map((c, i) => comoFila(c, i + 1)), fotos });
+    const encabezado = [...ENCABEZADO.slice(0, PRIMERA_COLUMNA_FOTO), ...cols.map(([, t]) => `Foto: ${t}`)];
+    hojas.push({ nombre, encabezado, filas: lista.map((c, i) => comoFila(c, i + 1, cols.length)), fotos });
   }
   return hojas;
 }

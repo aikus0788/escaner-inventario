@@ -2,10 +2,11 @@
 import {
   $, el, db, aviso, elegir, confirmar, conEspera, pedirImagen, compartirArchivo, descargarArchivo, campoConLista, cabecera,
   hoy, aIso, deIso, comprimir, guardarFoto, leerFoto, limpiarFotos,
-  CLIENTES, OTROS, REGIONES, POS, SSCO, RETIRO, INSTALACION, POR_TIPO, COMPONENTES, FOTOS_POS, etiqueta,
+  CLIENTES, OTROS, REGIONES, POS, SSCO, RETIRO, INSTALACION, POR_TIPO, COMPONENTES, FOTOS_POS, etiqueta, fotosDe,
 } from './base.js';
 import { leerEtiqueta } from './lector.js';
 import { escribirXlsx, hojasInventario, leerXlsx } from './xlsx.js';
+import * as FotosSeries from './fotosseries.js';
 
 export async function cargarCajas() { return (await db.get('kv', 'cajas')) || []; }
 const guardarCajas = (c) => db.set('kv', 'cajas', c);
@@ -22,6 +23,9 @@ export async function pantallaInventario(app) {
   let trabajo = '';
   let editandoId = null;
   let fotosForm = {};
+  // Fotos usadas para leer modelo/serie («componente|campo» → id): se envían aparte del Excel.
+  let fotosSeriesForm = {};
+  const pendientesSeries = [];
   let fechaDeTrabajo = '';
   const candidatos = {};
 
@@ -87,6 +91,9 @@ export async function pantallaInventario(app) {
   async function leerFoto_(clave, input, estado) {
     const file = await pedirImagen();
     if (!file) return;
+    // Se guarda una copia para poder enviarla después junto a las demás fotos de series.
+    const destino = fotosSeriesForm;
+    pendientesSeries.push(comprimir(file).then((b) => guardarFoto(b)).then((id) => { destino[clave] = id; }).catch(() => {}));
     estado.hidden = false;
     estado.className = 'estado-lectura';
     estado.textContent = 'Leyendo la imagen… (la primera vez puede tardar unos segundos)';
@@ -151,8 +158,17 @@ export async function pantallaInventario(app) {
 
   // ---------- Fotos del POS ----------
   const fotosUI = {};
-  const contenedorFotos = el('div', { style: 'display:flex;flex-direction:column;gap:10px' },
-    FOTOS_POS.map(([k, nombre], i) => {
+  const contenedorFotos = el('div', { style: 'display:flex;flex-direction:column;gap:10px' });
+  /** Trabajo que manda en las fotos: el de la caja que se edita o el elegido al entrar. */
+  const trabajoFotos = () => (editandoId !== null && cajas.find((c) => c.id === editandoId)?.trabajo) || trabajo;
+  /** Espacios de foto: los del trabajo (Retiro: cómo quedó, dónde quedó y adicional) y cualquier otra que ya tenga la caja. */
+  function espaciosFoto() {
+    const base = fotosDe(trabajoFotos());
+    return [...base, ...FOTOS_POS.filter((f) => !base.includes(f) && fotosForm[f[0]])];
+  }
+  function construirFotos() {
+    for (const k of Object.keys(fotosUI)) delete fotosUI[k];
+    contenedorFotos.replaceChildren(...espaciosFoto().map(([k, nombre], i) => {
       const mini = el('button', { class: 'mini', type: 'button', 'aria-label': `Ver foto ${nombre}`, onclick: () => (fotosForm[k] ? verFoto(fotosForm[k]) : sacarFotoPos(k)) });
       const estado = el('span', {}, 'Sin foto');
       const quitar = el('button', { class: 'boton-texto rojo', type: 'button', hidden: true, style: 'padding:4px 0', onclick: () => { delete fotosForm[k]; pintarFotos(); } }, 'Quitar foto');
@@ -161,6 +177,8 @@ export async function pantallaInventario(app) {
         el('div', { class: 'info' }, el('b', {}, `${i + 1}. ${nombre}`), estado, el('div', {}, quitar)),
         el('button', { class: 'camara', type: 'button', 'aria-label': `Foto: ${nombre}`, onclick: () => sacarFotoPos(k) }, '📷'));
     }));
+    pintarFotos();
+  }
 
   async function sacarFotoPos(k) {
     const file = await pedirImagen();
@@ -177,8 +195,7 @@ export async function pantallaInventario(app) {
   const urls = [];
   async function pintarFotos() {
     urls.splice(0).forEach((u) => URL.revokeObjectURL(u));
-    for (const [k] of FOTOS_POS) {
-      const ui = fotosUI[k];
+    for (const [k, ui] of Object.entries(fotosUI)) {
       const blob = fotosForm[k] ? await leerFoto(fotosForm[k]) : null;
       if (blob) {
         const u = URL.createObjectURL(blob);
@@ -215,11 +232,13 @@ export async function pantallaInventario(app) {
       cliente: clienteActual(), tienda: edtTienda.value.trim(), direccion: edtDireccion.value.trim(), region: edtRegion.value.trim(),
       tipo, ubicacion: edtUbicacion.value.trim(), numeroPos: edtNumeroPos.value.trim(), piezas,
       notas: edtNotas.value.trim(), estado: edtEstado.value.trim(),
-      fotos: Object.fromEntries(Object.entries(fotosForm).filter(([k]) => FOTOS_POS.some(([f]) => f === k))),
+      fotos: Object.fromEntries(Object.entries(fotosForm).filter(([k]) => espaciosFoto().some(([f]) => f === k))),
+      fotosSeries: Object.fromEntries(Object.entries(fotosSeriesForm).filter(([k]) => (POR_TIPO[tipo] || []).includes(k.split('|')[0]))),
     };
   }
 
   async function guardar() {
+    await Promise.all(pendientesSeries.splice(0));
     const c = leerFormulario(editandoId ?? Date.now());
     if (!c.trabajo) { await elegirTrabajo(false); return; }
     if (!c.tipo) { aviso('Elige si la caja es POS o SSCO.'); return; }
@@ -255,13 +274,14 @@ export async function pantallaInventario(app) {
     edtNotas.value = '';
     edtEstado.value = '';
     fotosForm = {};
-    pintarFotos();
+    fotosSeriesForm = {};
     construirPiezas({});
     editandoId = null;
+    construirFotos();
     btnGuardar.textContent = 'GUARDAR CAJA';
     barraEdicion.hidden = true;
     pintarLista();
-    limpiarFotos(cajas.flatMap((c) => Object.values(c.fotos || {}))).catch(() => {});
+    limpiarFotos(cajas.flatMap((c) => [...Object.values(c.fotos || {}), ...Object.values(c.fotosSeries || {})])).catch(() => {});
   }
 
   async function terminarEdicion() {
@@ -280,6 +300,7 @@ export async function pantallaInventario(app) {
     ponerTienda(c);
     edtFecha.value = aIso(c.fecha) || aIso(hoy());
     fotosForm = { ...(c.fotos || {}) };
+    fotosSeriesForm = { ...(c.fotosSeries || {}) };
     tipo = c.tipo;
     pintarTipo();
     construirPiezas(c.piezas);
@@ -287,7 +308,7 @@ export async function pantallaInventario(app) {
     edtNumeroPos.value = c.numeroPos || '';
     edtNotas.value = c.notas || '';
     edtEstado.value = c.estado || '';
-    pintarFotos();
+    construirFotos();
     btnGuardar.textContent = 'GUARDAR CAMBIOS';
     barraEdicion.hidden = false;
     pintarLista();
@@ -398,6 +419,33 @@ export async function pantallaInventario(app) {
     else if (i === 1) descargarArchivo(bytes, nombre, tipoMime);
   }
 
+  // ---------- Fotos de series (se envían aparte del Excel) ----------
+  async function enviarFotosSeries() {
+    const conFotos = cajas.filter((c) => FotosSeries.cuantas(c) > 0);
+    if (!conFotos.length) {
+      await elegir('Fotos de series', [], { mensaje: 'Todavía no hay fotos de series guardadas.\n\nSe guardan solas cuando sacas (o eliges) la foto del modelo o la serie de un componente y luego tocas «Guardar caja».', cancelar: 'Entendido' });
+      return;
+    }
+    const total = conFotos.reduce((a, c) => a + FotosSeries.cuantas(c), 0);
+    const opciones = [`Todas las cajas (${total} fotos)`, ...conFotos.map((c) => {
+      const n = FotosSeries.cuantas(c);
+      return `${c.trabajo || 'Sin trabajo'} · ${[c.tipo + (c.numeroPos ? ` N° ${c.numeroPos}` : ''), c.ubicacion].filter(Boolean).join(' · ')} (${n} ${n === 1 ? 'foto' : 'fotos'})`;
+    })];
+    const i = await elegir('Enviar fotos de series', opciones);
+    if (i === null) return;
+    const elegidas = i === 0 ? conFotos : [conFotos[i - 1]];
+    const archivos = await conEspera('Preparando fotos…', () => FotosSeries.preparar(elegidas));
+    if (!archivos.length) { aviso('No se encontraron las fotos.'); return; }
+    const c0 = elegidas[0];
+    const titulo = `Fotos de series · ${[c0.cliente, c0.tienda ? `Tienda ${c0.tienda}` : ''].filter(Boolean).join(' ')} · ${archivos.length} fotos`;
+    if (navigator.canShare?.({ files: archivos })) {
+      try { await navigator.share({ files: archivos, title: titulo }); return; } catch (e) { if (e?.name === 'AbortError') return; }
+    }
+    // Sin «Compartir» (computador): se descargan juntas en un .zip.
+    const zip = window.fflate.zipSync(Object.fromEntries(await Promise.all(archivos.map(async (f) => [f.name, new Uint8Array(await f.arrayBuffer())]))), { level: 0 });
+    descargarArchivo(zip, 'fotos_series.zip', 'application/zip');
+  }
+
   // ---------- Retiro / Instalación ----------
   async function elegirTrabajo(obligatorio) {
     const i = await elegir('¿Qué trabajo vas a hacer?', [RETIRO, INSTALACION],
@@ -408,6 +456,7 @@ export async function pantallaInventario(app) {
     }
     trabajo = [RETIRO, INSTALACION][i];
     chipTrabajo.textContent = `${trabajo} ▾`;
+    if (editandoId === null) construirFotos();
     aviso(`Trabajo: ${trabajo}`);
   }
 
@@ -438,6 +487,7 @@ export async function pantallaInventario(app) {
       el('div', { class: 'acciones', style: 'margin-bottom:10px' },
         el('button', { class: 'boton borde', type: 'button', onclick: nuevoExcel }, 'Nuevo Excel'),
         el('button', { class: 'boton borde', type: 'button', onclick: cargarExcel }, 'Cargar Excel')),
+      el('button', { class: 'boton borde ancho', type: 'button', style: 'margin-bottom:10px', onclick: enviarFotosSeries }, '📷  Enviar fotos de series'),
       vacia, lista),
     el('div', { class: 'barra-inferior' }, el('div', {}, el('button', { class: 'boton acento', type: 'button', onclick: exportar }, 'EXPORTAR EXCEL'))));
 
@@ -446,7 +496,7 @@ export async function pantallaInventario(app) {
   pintarTipo();
   construirPiezas({});
   edtFecha.value = aIso(hoy());
-  pintarFotos();
+  construirFotos();
   pintarLista();
   elegirTrabajo(true);
 }
