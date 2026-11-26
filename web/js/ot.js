@@ -1,10 +1,10 @@
-// Módulo «OT trabajos» (versión web): orden de trabajo NCR Voyix con firma y PDF.
+// Módulo «OT trabajos» (versión web): orden de trabajo NCR Voyix o IMX, con firma y PDF.
 import {
   el, db, aviso, elegir, confirmar, conEspera, pedirImagen, pedirImagenes, compartirArchivo, descargarArchivo, campoConLista, cabecera,
   hoy, aIso, deIso, comprimir, guardarFoto, leerFoto, CLIENTES, POR_TIPO, COMPONENTES, etiqueta,
 } from './base.js';
 import { leerEtiqueta } from './lector.js';
-import { crearPdfOt, MAX_LINEAS } from './otpdf.js';
+import { crearPdfOt, crearPdfOtImx, MAX_LINEAS } from './otpdf.js';
 import { cargarCajas } from './inventario.js';
 
 const ESTADOS = ['Finalizada', 'Pendiente', 'Parcial', 'Reprogramada', 'Cancelada'];
@@ -372,20 +372,20 @@ export async function pantallaOt(app) {
     let bytes;
     try {
       bytes = await conEspera('Creando la OT en PDF…', async () => {
-        const logo = new Uint8Array(await (await fetch('img/logo_ncr_voyix.jpg')).arrayBuffer());
+        const logo = new Uint8Array(await (await fetch(tipoOt === 'IMX' ? 'img/logo_imx.png' : 'img/logo_ncr_voyix.jpg')).arrayBuffer());
         const firma = ot.firma ? new Uint8Array(await (await fetch(ot.firma)).arrayBuffer()) : null;
         const imgs = [];
         for (const id of ot.imagenes) {
           const b = await leerFoto(id);
           if (b) imgs.push(new Uint8Array(await b.arrayBuffer()));
         }
-        return crearPdfOt(ot, firma, logo, imgs);
+        return tipoOt === 'IMX' ? crearPdfOtImx(ot, firma, logo, imgs, ESTADOS) : crearPdfOt(ot, firma, logo, imgs);
       });
     } catch (e) {
       aviso(`No se pudo crear el PDF: ${e.message || e}`);
       return;
     }
-    const nombre = ['OT', ot.numero, ot.local, ot.fecha].filter(Boolean).join('_').replace(/[^A-Za-z0-9ÁÉÍÓÚáéíóúÑñ_-]+/g, '-') + '.pdf';
+    const nombre = [tipoOt === 'IMX' ? 'OT-IMX' : 'OT', ot.numero, ot.local, ot.fecha].filter(Boolean).join('_').replace(/[^A-Za-z0-9ÁÉÍÓÚáéíóúÑñ_-]+/g, '-') + '.pdf';
     const i = await elegir('OT lista', ['Compartir (WhatsApp, correo…)', 'Ver', 'Descargar al teléfono'], { mensaje: `Se creó ${nombre}.` });
     if (i === 0) await compartirArchivo(bytes, nombre, 'application/pdf', nombre.replace(/_/g, ' '));
     else if (i === 1) window.open(URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' })), '_blank');
@@ -413,19 +413,14 @@ export async function pantallaOt(app) {
         cajaFirma,
         el('button', { class: 'boton-texto rojo', type: 'button', style: 'align-self:flex-end', onclick: borrarFirma }, 'Borrar firma')));
   // ---------- Tipo de OT ----------
+  let tipoOt = 'NCR';
   const chipTipo = el('button', { class: 'chip-trabajo', type: 'button', onclick: () => elegirTipo(false) }, 'OT NCR Voyix ▾');
   async function elegirTipo(obligatorio) {
-    const i = await elegir('¿Qué orden de trabajo vas a llenar?', ['OT NCR Voyix', 'OT Bartech (próximamente)'],
+    const i = await elegir('¿Qué orden de trabajo vas a llenar?', ['OT NCR Voyix', 'OT IMX'],
       { cancelar: obligatorio ? 'Volver al inicio' : 'Cancelar', obligatorio });
     if (i === null) { if (obligatorio) location.hash = '#inicio'; return; }
-    if (i === 1) {
-      const j = await elegir('OT Bartech', ['Usar OT NCR'], {
-        mensaje: 'El formato de la OT Bartech estará disponible en una próxima actualización.',
-        cancelar: obligatorio ? 'Volver al inicio' : 'Cancelar', obligatorio,
-      });
-      if (j === null) { if (obligatorio) location.hash = '#inicio'; return; }
-    }
-    chipTipo.textContent = 'OT NCR Voyix ▾';
+    tipoOt = i === 1 ? 'IMX' : 'NCR';
+    chipTipo.textContent = tipoOt === 'IMX' ? 'OT IMX ▾' : 'OT NCR Voyix ▾';
   }
 
   app.replaceChildren(
