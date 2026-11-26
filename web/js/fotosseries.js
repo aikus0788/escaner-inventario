@@ -1,13 +1,13 @@
 // Fotos usadas para leer modelo y serie: se envían aparte del Excel, con una franja que dice qué es cada una.
 import { COMPONENTES, etiqueta, leerFoto } from './base.js';
 
-/** Fotos de una caja en orden: componente y luego modelo antes que serie. */
+/** Solo las fotos de la serie de cada componente, en el orden de la caja. */
 export function ordenadas(c) {
   const pos = (k) => { const i = COMPONENTES.indexOf(k.split('|')[0]); return i < 0 ? 99 : i; };
-  return Object.entries(c.fotosSeries || {}).sort(([a], [b]) => pos(a) - pos(b) || (a.endsWith('|modelo') ? 0 : 1) - (b.endsWith('|modelo') ? 0 : 1));
+  return Object.entries(c.fotosSeries || {}).filter(([k]) => k.endsWith('|serie')).sort(([a], [b]) => pos(a) - pos(b));
 }
 
-export const cuantas = (c) => Object.keys(c.fotosSeries || {}).length;
+export const cuantas = (c) => ordenadas(c).length;
 
 export function titulos(c, clave) {
   const [comp, campo] = clave.split('|');

@@ -91,9 +91,9 @@ export async function pantallaInventario(app) {
   async function leerFoto_(clave, input, estado) {
     const file = await pedirImagen();
     if (!file) return;
-    // Se guarda una copia para poder enviarla después junto a las demás fotos de series.
+    // La foto de la serie se guarda para enviarla después con «Enviar fotos de series» (la del modelo no).
     const destino = fotosSeriesForm;
-    pendientesSeries.push(comprimir(file).then((b) => guardarFoto(b)).then((id) => { destino[clave] = id; }).catch(() => {}));
+    if (clave.endsWith('|serie')) pendientesSeries.push(comprimir(file).then((b) => guardarFoto(b)).then((id) => { destino[clave] = id; }).catch(() => {}));
     estado.hidden = false;
     estado.className = 'estado-lectura';
     estado.textContent = 'Leyendo la imagen… (la primera vez puede tardar unos segundos)';
@@ -423,7 +423,7 @@ export async function pantallaInventario(app) {
   async function enviarFotosSeries() {
     const conFotos = cajas.filter((c) => FotosSeries.cuantas(c) > 0);
     if (!conFotos.length) {
-      await elegir('Fotos de series', [], { mensaje: 'Todavía no hay fotos de series guardadas.\n\nSe guardan solas cuando sacas (o eliges) la foto del modelo o la serie de un componente y luego tocas «Guardar caja».', cancelar: 'Entendido' });
+      await elegir('Fotos de series', [], { mensaje: 'Todavía no hay fotos de series guardadas.\n\nSe guardan solas cuando sacas (o eliges) la foto de la serie de un componente y luego tocas «Guardar caja».', cancelar: 'Entendido' });
       return;
     }
     const total = conFotos.reduce((a, c) => a + FotosSeries.cuantas(c), 0);

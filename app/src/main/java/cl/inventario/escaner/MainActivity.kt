@@ -100,9 +100,9 @@ class MainActivity : AppCompatActivity() {
     private fun usarFoto() {
         val uri = FileProvider.getUriForFile(this, "$packageName.files", File(cacheDir, "foto_actual.jpg"))
         val k = objetivo
-        // Las fotos del POS van a su espacio; las de modelo y serie se leen y además se guardan para enviarlas aparte.
+        // Las fotos del POS van a su espacio; las de modelo y serie se leen, y la de la serie además se guarda para enviarla aparte.
         if (Caja.FOTOS_POS.any { it.first == k }) guardarFoto(k) else {
-            guardarFotoSerie(k)
+            if (k.endsWith("|$CAMPO_SERIE")) guardarFotoSerie(k)
             procesarFoto(uri, k)
         }
     }
@@ -854,7 +854,7 @@ class MainActivity : AppCompatActivity() {
         if (conFotos.isEmpty()) {
             MaterialAlertDialogBuilder(this)
                 .setTitle("Fotos de series")
-                .setMessage("Todavía no hay fotos de series guardadas.\n\nSe guardan solas cuando sacas (o eliges) la foto del modelo o la serie de un componente y luego tocas «Guardar caja».")
+                .setMessage("Todavía no hay fotos de series guardadas.\n\nSe guardan solas cuando sacas (o eliges) la foto de la serie de un componente y luego tocas «Guardar caja».")
                 .setPositiveButton("Entendido", null)
                 .show()
             return

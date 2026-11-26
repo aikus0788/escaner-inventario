@@ -24,7 +24,9 @@ class FotosSeriesTest {
             notas = "", trabajo = Caja.RETIRO,
             fotosSeries = mapOf("Scanner de mano|serie" to "c.jpg", "${Caja.PRINCIPAL}|serie" to "b.jpg", "${Caja.PRINCIPAL}|modelo" to "a.jpg"),
         )
-        assertEquals(listOf("a.jpg", "b.jpg", "c.jpg"), FotosSeries.ordenadas(c).map { it.second })
+        // Solo se envían las fotos de la serie (la del modelo no).
+        assertEquals(listOf("b.jpg", "c.jpg"), FotosSeries.ordenadas(c).map { it.second })
+        assertEquals(2, FotosSeries.cuantas(c))
         val (p, d) = FotosSeries.titulos(c, "${Caja.PRINCIPAL}|serie")
         assertEquals("POS · Serie: 41A2B3C", p)
         assertEquals("Retiro · Jumbo Tienda 512 · POS N° 05 · Caja 3 · 26-11-2026", d)

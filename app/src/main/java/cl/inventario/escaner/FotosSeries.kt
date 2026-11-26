@@ -19,14 +19,13 @@ object FotosSeries {
     const val MODELO = "modelo"
     const val SERIE = "serie"
 
-    /** Fotos de una caja en orden: componente (orden de la caja) y luego modelo antes que serie. */
+    /** Solo las fotos de la serie de cada componente, en el orden de la caja. */
     fun ordenadas(c: Caja): List<Pair<String, String>> =
-        c.fotosSeries.entries.sortedWith(compareBy(
-            { e -> Caja.COMPONENTES.indexOf(e.key.substringBefore('|')).let { if (it < 0) 99 else it } },
-            { e -> if (e.key.endsWith("|$MODELO")) 0 else 1 },
-        )).map { it.key to it.value }
+        c.fotosSeries.entries.filter { it.key.endsWith("|$SERIE") }
+            .sortedBy { e -> Caja.COMPONENTES.indexOf(e.key.substringBefore('|')).let { if (it < 0) 99 else it } }
+            .map { it.key to it.value }
 
-    fun cuantas(c: Caja) = c.fotosSeries.size
+    fun cuantas(c: Caja) = ordenadas(c).size
 
     /** Texto de la franja: línea principal y detalle de la caja. */
     fun titulos(c: Caja, clave: String): Pair<String, String> {
