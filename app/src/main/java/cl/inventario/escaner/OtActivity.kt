@@ -57,6 +57,25 @@ class OtActivity : AppCompatActivity() {
     /** Imágenes que van al final del PDF (archivos en la carpeta de imágenes de la OT). */
     private val imagenes = mutableListOf<String>()
 
+    /** Comentario de cada imagen (nombre de archivo → texto). */
+    private val comentarios = mutableMapOf<String, String>()
+
+    /** Imágenes recién agregadas que faltan por pasar por el editor de marcas. */
+    private val porMarcar = ArrayDeque<String>()
+
+    private val marcar = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { r ->
+        if (r.resultCode == RESULT_OK) {
+            val f = r.data?.getStringExtra(MarcarImagenActivity.EXTRA_ARCHIVO)?.let { File(it) }
+            if (f != null) {
+                val c = r.data?.getStringExtra(MarcarImagenActivity.EXTRA_COMENTARIO).orEmpty()
+                if (c.isBlank()) comentarios.remove(f.name) else comentarios[f.name] = c
+                pintarImagenes()
+                almacen.guardar(leer())
+            }
+        }
+        siguienteMarca()
+    }
+
     /** Tipo de OT elegido al entrar. */
     private var tipoOt = ""
 
@@ -107,7 +126,7 @@ class OtActivity : AppCompatActivity() {
         b.edtFecha.setOnClickListener { elegirFecha() }
         b.boxFecha.setEndIconOnClickListener { elegirFecha() }
 
-        b.edtCliente.setAdapter(BuscadorLista(this, CLIENTES))
+        prepararClientes()
         b.edtEstado.setAdapter(BuscadorLista(this, OrdenTrabajo.ESTADOS))
         mostrarListaAlTocar(b.edtCliente)
         mostrarListaAlTocar(b.edtEstado)
@@ -141,7 +160,60 @@ class OtActivity : AppCompatActivity() {
         b.txtTipoOt.text = if (tipo == TIPO_IMX) "OT IMX ▾" else "OT NCR Voyix ▾"
     }
 
+    // ---------------- Cliente («Otros» agrega uno nuevo) ----------------
+
+    private fun prepararClientes() {
+        val lista = (CLIENTES + almacen.clientesExtra()).distinctBy { it.lowercase() } + OrdenTrabajo.OTROS
+        b.edtCliente.setAdapter(BuscadorLista(this, lista))
+        b.edtCliente.setOnItemClickListener { parent, _, pos, _ ->
+            if (parent.getItemAtPosition(pos)?.toString() == OrdenTrabajo.OTROS) {
+                b.edtCliente.setText("", false)
+                pedirClienteNuevo()
+            }
+        }
+    }
+
+    private fun pedirClienteNuevo() {
+        val caja = com.google.android.material.textfield.TextInputLayout(this).apply { hint = "Nombre del cliente" }
+        val edt = com.google.android.material.textfield.TextInputEditText(caja.context).apply {
+            inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_FLAG_CAP_WORDS
+        }
+        caja.addView(edt)
+        val pad = (20 * resources.displayMetrics.density).toInt()
+        val marco = android.widget.FrameLayout(this).apply { setPadding(pad, pad / 2, pad, 0); addView(caja) }
+        val d = MaterialAlertDialogBuilder(this)
+            .setTitle("Nuevo cliente")
+            .setMessage("Escribe el nombre. Quedará en la lista para las próximas OT.")
+            .setView(marco)
+            .setPositiveButton("Agregar") { _, _ ->
+                val n = edt.text?.toString()?.trim().orEmpty()
+                if (n.isNotEmpty()) {
+                    almacen.agregarCliente(n)
+                    prepararClientes()
+                    b.edtCliente.setText(n, false)
+                    almacen.guardar(leer())
+                }
+            }
+            .setNegativeButton("Cancelar", null)
+            .show()
+        edt.requestFocus()
+        d.window?.setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_STATE_VISIBLE)
+    }
+
     // ---------------- Imágenes ----------------
+
+    private fun abrirMarcador(nombre: String) {
+        val i = imagenes.indexOf(nombre)
+        val titulo = if (i >= 0) "Imagen ${i + 1} de ${imagenes.size}" else "Marcar imagen"
+        marcar.launch(MarcarImagenActivity.intent(this, File(carpetaImagenes(), nombre), comentarios[nombre].orEmpty(), titulo))
+    }
+
+    private fun siguienteMarca() {
+        while (porMarcar.isNotEmpty()) {
+            val n = porMarcar.removeFirst()
+            if (n in imagenes) { abrirMarcador(n); return }
+        }
+    }
 
     private fun carpetaImagenes() = File(carpetaOt(), "imagenes").apply { mkdirs() }
 
@@ -176,6 +248,9 @@ class OtActivity : AppCompatActivity() {
                 imagenes.addAll(nuevas)
                 pintarImagenes()
                 almacen.guardar(leer())
+                // Cada imagen nueva pasa por el editor para marcarla y comentarla (se puede dejar tal cual).
+                porMarcar.addAll(nuevas)
+                siguienteMarca()
                 if (nuevas.size < uris.size) aviso("Algunas imágenes no se pudieron agregar.")
             }
         }.start()
@@ -188,10 +263,20 @@ class OtActivity : AppCompatActivity() {
             val v = layoutInflater.inflate(R.layout.item_imagen_ot, b.contenedorImagenes, false)
             val f = File(carpetaImagenes(), nombre)
             v.findViewById<android.widget.ImageView>(R.id.img).setImageBitmap(miniatura(f, lado))
-            v.findViewById<TextView>(R.id.txtNum).text = "${i + 1}"
-            v.findViewById<View>(R.id.img).setOnClickListener { verArchivo(f, "image/jpeg") }
+            v.findViewById<TextView>(R.id.txtNum).text = if (comentarios[nombre].isNullOrBlank()) "${i + 1}" else "${i + 1} 💬"
+            v.findViewById<View>(R.id.img).setOnClickListener {
+                val c = comentarios[nombre]
+                MaterialAlertDialogBuilder(this)
+                    .setTitle("Imagen ${i + 1}")
+                    .setMessage(if (c.isNullOrBlank()) "Sin comentario." else "Comentario: $c")
+                    .setPositiveButton("Marcar y comentar") { _, _ -> abrirMarcador(nombre) }
+                    .setNeutralButton("Ver") { _, _ -> verArchivo(f, "image/jpeg") }
+                    .setNegativeButton("Cerrar", null)
+                    .show()
+            }
             v.findViewById<View>(R.id.btnQuitar).setOnClickListener {
                 imagenes.remove(nombre)
+                comentarios.remove(nombre)
                 f.delete()
                 pintarImagenes()
                 almacen.guardar(leer())
@@ -266,6 +351,8 @@ class OtActivity : AppCompatActivity() {
 
         imagenes.clear()
         imagenes.addAll(ot.imagenes.filter { File(carpetaImagenes(), it).exists() })
+        comentarios.clear()
+        comentarios.putAll(ot.comentarios.filterKeys { it in imagenes })
         pintarImagenes()
     }
 
@@ -287,6 +374,7 @@ class OtActivity : AppCompatActivity() {
         recibeCargo = b.edtRecibeCargo.texto(),
         firma = archivoFirma,
         imagenes = imagenes.toList(),
+        comentarios = comentarios.filterKeys { it in imagenes },
     )
 
     private fun EditText.texto() = text?.toString()?.trim().orEmpty()
@@ -547,9 +635,10 @@ class OtActivity : AppCompatActivity() {
         val archivo = File(carpeta, nombrePdf(ot))
         Thread {
             val archivosImg = ot.imagenes.map { File(carpetaImagenes(), it) }
+            val textos = ot.imagenes.map { ot.comentarios[it].orEmpty() }
             val error = try { 
-                if (tipoOt == TIPO_IMX) OtPdfImx.generar(this, ot, firma, archivo, archivosImg)
-                else OtPdf.generar(this, ot, firma, archivo, archivosImg)
+                if (tipoOt == TIPO_IMX) OtPdfImx.generar(this, ot, firma, archivo, archivosImg, textos)
+                else OtPdf.generar(this, ot, firma, archivo, archivosImg, textos)
                 null
             } catch (e: Exception) { e.message ?: "error" }
             runOnUiThread {

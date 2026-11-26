@@ -39,6 +39,13 @@
             android:parentActivityName=".HomeActivity"
             android:windowSoftInputMode="adjustResize" />
 
+        <!-- Editor para marcar y comentar imágenes de la OT -->
+        <activity
+            android:name=".MarcarImagenActivity"
+            android:exported="false"
+            android:label="Marcar imagen"
+            android:windowSoftInputMode="adjustResize" />
+
         <!-- Módulo: Drive -->
         <activity
             android:name=".DriveActivity"

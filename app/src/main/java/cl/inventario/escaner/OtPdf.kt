@@ -64,7 +64,10 @@ object OtPdf {
     private const val X_FIN = 534.5f
 
     /** Crea el PDF de la OT en [destino]; las [imagenes] van en páginas adicionales, dos por hoja. */
-    fun generar(ctx: Context, ot: OrdenTrabajo, firma: Bitmap?, destino: File, imagenes: List<File> = emptyList()) {
+    fun generar(
+        ctx: Context, ot: OrdenTrabajo, firma: Bitmap?, destino: File, imagenes: List<File> = emptyList(),
+        comentarios: List<String> = emptyList(),
+    ) {
         val logo = BitmapFactory.decodeResource(ctx.resources, R.drawable.logo_ncr_voyix)
         val doc = PdfDocument()
         try {
@@ -72,11 +75,11 @@ object OtPdf {
             dibujar(pagina.canvas, ot, firma, logo)
             doc.finishPage(pagina)
 
-            val validas = imagenes.filter { it.exists() && it.length() > 0 }
+            val validas = imagenes.mapIndexed { i, f -> f to comentarios.getOrElse(i) { "" } }.filter { it.first.exists() && it.first.length() > 0 }
             validas.chunked(POR_PAGINA).forEachIndexed { i, grupo ->
                 val p = doc.startPage(PdfDocument.PageInfo.Builder(ANCHO, ALTO, i + 2).create())
-                val bitmaps = grupo.map { cargarReducida(it) }
-                dibujarImagenes(p.canvas, ot, bitmaps, i * POR_PAGINA, validas.size, logo)
+                val bitmaps = grupo.map { cargarReducida(it.first) }
+                dibujarImagenes(p.canvas, ot, bitmaps, i * POR_PAGINA, validas.size, logo, grupo.map { it.second })
                 doc.finishPage(p)
                 bitmaps.forEach { it?.recycle() }
             }
@@ -88,6 +91,9 @@ object OtPdf {
 
     private const val POR_PAGINA = 2
 
+    /** Alto reservado bajo la imagen para su comentario. */
+    const val ALTO_COMENTARIO = 38f
+
     /** Imagen reducida (máx. 1600 px) para no llenar la memoria. */
     private fun cargarReducida(f: File): Bitmap? {
         val o = BitmapFactory.Options().apply { inJustDecodeBounds = true }
@@ -98,7 +104,10 @@ object OtPdf {
     }
 
     /** Página de imágenes: encabezado de la OT y hasta 2 imágenes con su número. */
-    fun dibujarImagenes(c: Canvas, ot: OrdenTrabajo, imagenes: List<Bitmap?>, desde: Int, total: Int, logo: Bitmap?) {
+    fun dibujarImagenes(
+        c: Canvas, ot: OrdenTrabajo, imagenes: List<Bitmap?>, desde: Int, total: Int, logo: Bitmap?,
+        comentarios: List<String> = emptyList(),
+    ) {
         c.drawColor(Color.WHITE)
         logo?.let { c.drawBitmap(it, null, RectF(50.4f, 21.6f, 211.6f, 47.0f), Paint(Paint.FILTER_BITMAP_FLAG)) }
         val titulo = "ORDEN DE TRABAJO" + (ot.numero.takeIf { it.isNotBlank() }?.let { " N° $it" } ?: "") + " · IMÁGENES"
@@ -108,8 +117,14 @@ object OtPdf {
         imagenes.forEachIndexed { i, bmp ->
             val caja = cajas[i]
             texto(c, "Imagen ${desde + i + 1} de $total", caja.left, caja.top + 11f, Alinear.IZQ, 300f, negrita = true, color = VERDE)
-            val area = RectF(caja.left, caja.top + 18f, caja.right, caja.bottom)
-            c.drawRect(area, borde)
+            val marco = RectF(caja.left, caja.top + 18f, caja.right, caja.bottom)
+            c.drawRect(marco, borde)
+            val comentario = comentarios.getOrElse(i) { "" }.trim()
+            val area = if (comentario.isEmpty()) marco else RectF(marco.left, marco.top, marco.right, marco.bottom - ALTO_COMENTARIO)
+            if (comentario.isNotEmpty()) {
+                c.drawLine(marco.left, area.bottom, marco.right, area.bottom, borde)
+                parrafo(c, "Comentario: $comentario", RectF(marco.left + 6f, area.bottom + 4f, marco.right - 6f, marco.bottom - 3f))
+            }
             if (bmp != null) {
                 val e = minOf((area.width() - 8) / bmp.width, (area.height() - 8) / bmp.height)
                 val w = bmp.width * e

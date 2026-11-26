@@ -38,6 +38,8 @@ data class OrdenTrabajo(
     val firma: String = "",
     /** Imágenes que se agregan al final del PDF (archivos dentro de la carpeta de imágenes de la OT). */
     val imagenes: List<String> = emptyList(),
+    /** Comentario de cada imagen (nombre de archivo → texto). */
+    val comentarios: Map<String, String> = emptyMap(),
 ) {
     companion object {
         /** El formulario tiene 9 líneas de detalle. */
@@ -84,6 +86,8 @@ class AlmacenOt(context: Context) {
                 recibeCargo = o.optString("recibeCargo"),
                 firma = o.optString("firma"),
                 imagenes = o.optJSONArray("imagenes")?.let { a -> (0 until a.length()).map { a.getString(it) } } ?: emptyList(),
+                comentarios = o.optJSONObject("comentarios")?.let { c -> c.keys().asSequence().associateWith { c.optString(it) } }
+                    ?: emptyMap(),
             )
         } catch (_: Exception) {
             OrdenTrabajo()
@@ -104,7 +108,18 @@ class AlmacenOt(context: Context) {
             .put("observaciones", ot.observaciones).put("recibeNombre", ot.recibeNombre).put("recibeCargo", ot.recibeCargo)
             .put("firma", ot.firma)
             .put("imagenes", JSONArray(ot.imagenes))
+            .put("comentarios", JSONObject(ot.comentarios.filterValues { it.isNotBlank() }))
         prefs.edit().putString("borrador", o.toString()).putString("tecnico", ot.tecnico).apply()
+    }
+
+    /** Clientes agregados con «Otros», para que aparezcan en la lista las próximas veces. */
+    fun clientesExtra(): List<String> = prefs.getString("clientesExtra", null)?.let { t ->
+        try { JSONArray(t).let { a -> (0 until a.length()).map { a.getString(it) } } } catch (_: Exception) { emptyList() }
+    } ?: emptyList()
+
+    fun agregarCliente(nombre: String) {
+        val lista = clientesExtra().filterNot { it.equals(nombre, true) } + nombre
+        prefs.edit().putString("clientesExtra", JSONArray(lista).toString()).apply()
     }
 
     /** Nombre del técnico de la última OT, para no escribirlo cada vez. */

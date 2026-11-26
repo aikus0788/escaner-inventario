@@ -37,9 +37,12 @@ object OtPdfImx {
     /** Estados que se muestran como casillas. */
     val ESTADOS = OrdenTrabajo.ESTADOS
 
-    fun generar(ctx: Context, ot: OrdenTrabajo, firma: Bitmap?, destino: File, imagenes: List<File> = emptyList()) {
+    fun generar(
+        ctx: Context, ot: OrdenTrabajo, firma: Bitmap?, destino: File, imagenes: List<File> = emptyList(),
+        comentarios: List<String> = emptyList(),
+    ) {
         val logo = BitmapFactory.decodeResource(ctx.resources, R.drawable.logo_imx)
-        val validas = imagenes.filter { it.exists() && it.length() > 0 }
+        val validas = imagenes.mapIndexed { i, f -> f to comentarios.getOrElse(i) { "" } }.filter { it.first.exists() && it.first.length() > 0 }
         val paginas = 1 + (validas.size + 1) / 2
         val doc = PdfDocument()
         try {
@@ -48,8 +51,8 @@ object OtPdfImx {
             doc.finishPage(p)
             validas.chunked(2).forEachIndexed { i, grupo ->
                 val pg = doc.startPage(PdfDocument.PageInfo.Builder(ANCHO, ALTO, i + 2).create())
-                val bitmaps = grupo.map { cargarReducida(it) }
-                dibujarImagenes(pg.canvas, ot, bitmaps, i * 2, validas.size, logo, i + 2, paginas)
+                val bitmaps = grupo.map { cargarReducida(it.first) }
+                dibujarImagenes(pg.canvas, ot, bitmaps, i * 2, validas.size, logo, i + 2, paginas, grupo.map { it.second })
                 doc.finishPage(pg)
                 bitmaps.forEach { it?.recycle() }
             }
@@ -140,15 +143,24 @@ object OtPdfImx {
 
     // ---------------- Páginas de imágenes ----------------
 
-    fun dibujarImagenes(c: Canvas, ot: OrdenTrabajo, imagenes: List<Bitmap?>, desde: Int, total: Int, logo: Bitmap?, pagina: Int, paginas: Int) {
+    fun dibujarImagenes(
+        c: Canvas, ot: OrdenTrabajo, imagenes: List<Bitmap?>, desde: Int, total: Int, logo: Bitmap?, pagina: Int, paginas: Int,
+        comentarios: List<String> = emptyList(),
+    ) {
         c.drawColor(Color.WHITE)
         encabezado(c, ot, logo, "Imágenes", 52f)
         val cajas = listOf(RectF(X0, 120f, X1, 455f), RectF(X0, 470f, X1, 795f))
         imagenes.forEachIndexed { i, bmp ->
             val caja = cajas[i]
             texto(c, "Imagen ${desde + i + 1} de $total", caja.left, caja.top + 2f, 10.5f, NARANJA2, negrita = true)
-            val area = RectF(caja.left, caja.top + 10f, caja.right, caja.bottom)
-            c.drawRoundRect(area, 4f, 4f, trazo(LINEA, 0.8f))
+            val marco = RectF(caja.left, caja.top + 10f, caja.right, caja.bottom)
+            c.drawRoundRect(marco, 4f, 4f, trazo(LINEA, 0.8f))
+            val comentario = comentarios.getOrElse(i) { "" }.trim().replace('\n', ' ')
+            val area = if (comentario.isEmpty()) marco else RectF(marco.left, marco.top, marco.right, marco.bottom - 38f)
+            if (comentario.isNotEmpty()) {
+                c.drawLine(marco.left, area.bottom, marco.right, area.bottom, trazo(LINEA, 0.7f))
+                comentarioImagen(c, comentario, marco.left + 8f, marco.right - 8f, area.bottom, marco.bottom)
+            }
             if (bmp != null) {
                 val e = minOf((area.width() - 8) / bmp.width, (area.height() - 8) / bmp.height)
                 val w = bmp.width * e
@@ -217,14 +229,35 @@ object OtPdfImx {
         }
     }
 
-    private fun partir(t: String, s: Float): List<String> {
+    /** Comentario bajo la imagen: «Comentario:» en naranjo y el texto en hasta 2 líneas. */
+    private fun comentarioImagen(c: Canvas, t: String, x0: Float, x1: Float, top: Float, bottom: Float) {
+        val etiqueta = "Comentario: "
+        val pe = pincel(9.5f, true, NARANJA2)
+        var s = 9.5f
+        var ls: List<String>
+        while (true) {
+            ls = partir(t, s, x1 - x0, pe.measureText(etiqueta) * s / 9.5f)
+            if (ls.size <= 2 || s <= 6.5f) break
+            s -= 0.5f
+        }
+        pe.textSize = s
+        val base0 = top + (bottom - top - (minOf(ls.size, 2) - 1) * s * 1.25f) / 2 + s * 0.35f
+        c.drawText(etiqueta, x0, base0, pe)
+        ls.take(2).forEachIndexed { i, l ->
+            val x = if (i == 0) x0 + pe.measureText(etiqueta) else x0
+            texto(c, if (i == 1 && ls.size > 2) l + "…" else l, x, base0 + i * s * 1.25f, s, TINTA)
+        }
+    }
+
+    private fun partir(t: String, s: Float, ancho: Float = X1 - X0, sangria: Float = 0f): List<String> {
         val p = pincel(s, false, TINTA)
         val out = mutableListOf<String>()
         for (parrafo in t.split('\n')) {
             var actual = ""
             for (palabra in parrafo.split(Regex("\\s+"))) {
                 val prueba = if (actual.isEmpty()) palabra else "$actual $palabra"
-                if (p.measureText(prueba) <= X1 - X0 || actual.isEmpty()) actual = prueba
+                val disponible = if (out.isEmpty()) ancho - sangria else ancho
+                if (p.measureText(prueba) <= disponible || actual.isEmpty()) actual = prueba
                 else { out.add(actual); actual = palabra }
             }
             out.add(actual)

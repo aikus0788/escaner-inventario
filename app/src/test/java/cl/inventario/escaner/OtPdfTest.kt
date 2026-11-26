@@ -91,7 +91,19 @@ class OtPdfTest {
         val bmp = Bitmap.createBitmap(OtPdf.ANCHO * 2, OtPdf.ALTO * 2, Bitmap.Config.ARGB_8888)
         val c = Canvas(bmp)
         c.scale(2f, 2f)
-        OtPdf.dibujarImagenes(c, ot, fotos, 0, 3, logo)
+        // Imagen marcada con el editor (círculo, flecha y lápiz) y con comentario.
+        val lienzo = LienzoMarcas(ctx).apply { base = fotos[0].copy(Bitmap.Config.ARGB_8888, false) }
+        val w = fotos[0].width.toFloat()
+        val h = fotos[0].height.toFloat()
+        lienzo.agregarTrazo(LienzoMarcas.Herramienta.CIRCULO, Color.rgb(229, 57, 53), w * .25f to h * .3f, w * .7f to h * .6f)
+        lienzo.agregarTrazo(LienzoMarcas.Herramienta.FLECHA, Color.rgb(253, 216, 53), w * .9f to h * .9f, w * .72f to h * .62f)
+        lienzo.agregarTrazo(LienzoMarcas.Herramienta.LAPIZ, Color.rgb(30, 91, 255), *(0..20).map { i -> w * (.1f + i * .02f) to h * (.85f + .03f * kotlin.math.sin(i / 2.0).toFloat()) }.toTypedArray())
+        assertTrue(lienzo.hayMarcas())
+        val marcada = lienzo.imagenFinal()
+        File("build/ot-preview-marcada.png").outputStream().use { marcada.compress(Bitmap.CompressFormat.PNG, 100, it) }
+        val fotosMarcadas = listOf(marcada, fotos[1])
+        val textos = listOf("Cable USB trasero dañado: se reemplaza y se deja ordenado con amarras.", "")
+        OtPdf.dibujarImagenes(c, ot, fotosMarcadas, 0, 3, logo, textos)
         File("build/ot-preview-imagenes.png").outputStream().use { bmp.compress(Bitmap.CompressFormat.PNG, 100, it) }
 
         // «Otros» usa lo escrito; el resto, el tipo elegido.
@@ -106,7 +118,7 @@ class OtPdfTest {
         Canvas(imx).apply { scale(2f, 2f) }.let { OtPdfImx.dibujar(it, ot.copy(numero = "IMX-00125"), firmaDePrueba(), logoImx, 2) }
         File("build/ot-preview-imx.png").outputStream().use { imx.compress(Bitmap.CompressFormat.PNG, 100, it) }
         val imxImg = lienzo()
-        Canvas(imxImg).apply { scale(2f, 2f) }.let { OtPdfImx.dibujarImagenes(it, ot.copy(numero = "IMX-00125"), fotos, 0, 2, logoImx, 2, 2) }
+        Canvas(imxImg).apply { scale(2f, 2f) }.let { OtPdfImx.dibujarImagenes(it, ot.copy(numero = "IMX-00125"), fotosMarcadas, 0, 2, logoImx, 2, 2, textos) }
         File("build/ot-preview-imx-imagenes.png").outputStream().use { imxImg.compress(Bitmap.CompressFormat.PNG, 100, it) }
         val imxOtro = lienzo()
         Canvas(imxOtro).apply { scale(2f, 2f) }.let { OtPdfImx.dibujar(it, ot.copy(estado = "En espera de repuesto"), null, logoImx) }
