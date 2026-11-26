@@ -32,7 +32,7 @@ const limpiar = (s) => (s || '').replace(/[‘’]/g, "'").replace(/[“”]/g, 
  *       observaciones, recibeNombre, recibeCargo }
  * firmaPng: bytes PNG (fondo blanco) o null. logoJpg: bytes del logo NCR Voyix.
  */
-export async function crearPdfOt(ot, firmaPng, logoJpg) {
+export async function crearPdfOt(ot, firmaPng, logoJpg, imagenes = []) {
   const { PDFDocument, StandardFonts, rgb } = window.PDFLib;
   const doc = await PDFDocument.create();
   doc.setTitle(`Orden de trabajo ${ot.numero || ''}`.trim());
@@ -89,7 +89,8 @@ export async function crearPdfOt(ot, firmaPng, logoJpg) {
 
   (ot.lineas || []).filter((l) => Object.values(l).some((v) => String(v || '').trim())).slice(0, MAX_LINEAS).forEach((l, i) => {
     const base = FILAS_DETALLE[i] - 7.2;
-    [l.tipoActividad, l.cantidad, l.modelo, l.tipoEquipo, l.serie].forEach((v, j) => {
+    const actividad = /^otros$/i.test((l.tipoActividad || '').trim()) && (l.actividadOtra || '').trim() ? l.actividadOtra : l.tipoActividad;
+    [actividad, l.cantidad, l.modelo, l.tipoEquipo, l.serie].forEach((v, j) => {
       const [a, b] = COLUMNAS[j];
       if (j === 1) dato(v, (a + b) / 2, base, b - a - 6, true);
       else dato(v, a + 3.5, base, b - a - 7);
@@ -132,6 +133,31 @@ export async function crearPdfOt(ot, firmaPng, logoJpg) {
     const w = f.width * e;
     const h = f.height * e;
     p.drawImage(f, { x: (cx0 + cx1) / 2 - w / 2, y: y(ct1), width: w, height: h });
+  }
+  // Imágenes: páginas adicionales, dos por hoja.
+  const logoImg = logoJpg ? await doc.embedJpg(logoJpg) : null;
+  const cajas = [[51.84, 78, 539.4, 438], [51.84, 452, 539.4, 800]];
+  for (let i = 0; i < imagenes.length; i += 2) {
+    const pg = doc.addPage([ANCHO, ALTO]);
+    if (logoImg) pg.drawImage(logoImg, { x: 50.4, y: y(47.0), width: 161.2, height: 25.4 });
+    const titulo = limpiar(`ORDEN DE TRABAJO${ot.numero ? ` N° ${ot.numero}` : ''} · IMÁGENES`);
+    let s = 11;
+    while (normal.widthOfTextAtSize(titulo, s) > 490 && s > 7) s -= 0.25;
+    pg.drawText(titulo, { x: 297.6 - normal.widthOfTextAtSize(titulo, s) / 2, y: y(61.5), size: s, font: normal, color: NEGRO });
+    for (let j = 0; j < 2 && i + j < imagenes.length; j++) {
+      const [x0, t0, x1, t1] = cajas[j];
+      pg.drawText(`Imagen ${i + j + 1} de ${imagenes.length}`, { x: x0, y: y(t0 + 11), size: 11, font: negrita, color: VERDE });
+      const top = t0 + 18;
+      pg.drawRectangle({ x: x0, y: y(t1), width: x1 - x0, height: t1 - top, borderColor: rgb(214 / 255, 217 / 255, 226 / 255), borderWidth: 0.8 });
+      try {
+        const img = await doc.embedJpg(imagenes[i + j]);
+        const e = Math.min((x1 - x0 - 8) / img.width, (t1 - top - 8) / img.height);
+        const w = img.width * e;
+        const h = img.height * e;
+        pg.drawImage(img, { x: (x0 + x1) / 2 - w / 2, y: y((top + t1) / 2 + h / 2), width: w, height: h });
+      } catch (_) { /* imagen dañada: se deja el recuadro */ }
+    }
+    pg.drawText('Preparado por Infomaxis', { x: 51.4, y: y(815.7), size: 11, font: normal, color: NEGRO });
   }
   return doc.save();
 }

@@ -155,3 +155,10 @@ button:focus-visible, .chip:focus-visible { outline: 3px solid var(--naranja); o
 @keyframes giro { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .girando { animation: none; } }
 .toast { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(96px + env(safe-area-inset-bottom, 0px)); z-index: 60; background: var(--tinta); color: var(--blanco); padding: 10px 16px; border-radius: 10px; font-size: 14px; max-width: calc(100% - 32px); text-align: center; }
+
+/* Imágenes de la OT */
+.tira-imagenes { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; }
+.imagen-ot { position: relative; flex: none; width: 96px; height: 96px; border-radius: 8px; background: var(--linea) center/cover no-repeat; }
+.imagen-ot .ver { position: absolute; inset: 0; border: 0; background: none; cursor: pointer; border-radius: 8px; }
+.imagen-ot .n { position: absolute; left: 0; bottom: 0; background: var(--azul); color: var(--blanco); font-size: 11px; font-weight: 700; padding: 1px 6px; border-radius: 0 6px 0 8px; pointer-events: none; }
+.imagen-ot .quitar { position: absolute; top: 4px; right: 4px; width: 28px; height: 28px; border-radius: 14px; border: 0; background: rgba(179, 38, 30, .85); color: var(--blanco); font-size: 14px; cursor: pointer; }

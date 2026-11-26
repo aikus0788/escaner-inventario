@@ -1,14 +1,15 @@
 // Módulo «OT trabajos» (versión web): orden de trabajo NCR Voyix con firma y PDF.
 import {
-  el, db, aviso, elegir, confirmar, conEspera, pedirImagen, compartirArchivo, descargarArchivo, campoConLista, cabecera,
-  hoy, aIso, deIso, CLIENTES, POR_TIPO, COMPONENTES, etiqueta,
+  el, db, aviso, elegir, confirmar, conEspera, pedirImagen, pedirImagenes, compartirArchivo, descargarArchivo, campoConLista, cabecera,
+  hoy, aIso, deIso, comprimir, guardarFoto, leerFoto, CLIENTES, POR_TIPO, COMPONENTES, etiqueta,
 } from './base.js';
 import { leerEtiqueta } from './lector.js';
 import { crearPdfOt, MAX_LINEAS } from './otpdf.js';
 import { cargarCajas } from './inventario.js';
 
 const ESTADOS = ['Finalizada', 'Pendiente', 'Parcial', 'Reprogramada', 'Cancelada'];
-const TIPOS_ACTIVIDAD = ['Instalación', 'Retiro', 'Mantención', 'Reparación', 'Revisión', 'Cambio de equipo'];
+const OTROS = 'Otros';
+const TIPOS_ACTIVIDAD = ['Instalación', 'Retiro', 'Reposicionamiento', 'Mantención', 'Reparación', 'Revisión', 'Cambio de equipo', OTROS];
 const TIPOS_EQUIPO = ['POS', 'SSCO', 'Pantalla', 'Segunda pantalla', 'Impresora', 'Gaveta', 'Teclado', 'Scanner de mano', 'Scanner de mesón'];
 
 export async function resumenOt() {
@@ -59,14 +60,26 @@ export async function pantallaOt(app) {
       tipoEquipo: lineaCampo('Tipo equipo', {}, TIPOS_EQUIPO),
       modelo: lineaCampo('Modelo', { class: 'mono', autocapitalize: 'characters' }),
       serie: lineaCampo('Serie', { class: 'mono', autocapitalize: 'characters' }),
+      actividadOtra: lineaCampo('Escribe la actividad', {}),
     };
     for (const k of Object.keys(ui)) ui[k].i.value = l[k] || '';
+    // «Otros»: aparece un campo para escribir la actividad.
+    const revisarOtros = () => {
+      const otros = ui.tipoActividad.i.value.trim().toLowerCase() === OTROS.toLowerCase();
+      const antes = !ui.actividadOtra.nodo.hidden;
+      ui.actividadOtra.nodo.hidden = !otros;
+      if (otros && !antes) ui.actividadOtra.i.focus();
+    };
+    ui.actividadOtra.nodo.hidden = true;
+    ui.tipoActividad.i.addEventListener('input', revisarOtros);
+    ui.tipoActividad.i.addEventListener('change', revisarOtros);
     const estado = el('div', { class: 'estado-lectura', hidden: true });
     const camara = (esSerie) => el('button', { class: 'camara', type: 'button', 'aria-label': esSerie ? 'Foto de la serie' : 'Foto del modelo', onclick: () => leer(ui, esSerie, estado) }, '📷');
     const titulo = el('b');
     const nodo = el('div', { class: 'linea-ot' },
       el('header', {}, titulo, el('button', { class: 'boton-texto rojo', type: 'button', onclick: () => quitar(nodoRef) }, 'Quitar')),
       el('div', { class: 'fila' }, ui.tipoActividad.nodo, el('div', { style: 'width:96px;flex:none' }, ui.cantidad.nodo)),
+      ui.actividadOtra.nodo,
       ui.tipoEquipo.nodo,
       el('div', { class: 'fila' }, ui.modelo.nodo, camara(false)),
       el('div', { class: 'fila' }, ui.serie.nodo, camara(true)),
@@ -74,6 +87,7 @@ export async function pantallaOt(app) {
     const nodoRef = { nodo, ui, titulo };
     lineas.push(nodoRef);
     contenedor.append(nodo);
+    if (ui.tipoActividad.i.value.trim().toLowerCase() === OTROS.toLowerCase()) ui.actividadOtra.nodo.hidden = false;
     numerar();
     if (enfocar) { ui.tipoActividad.i.focus(); nodo.scrollIntoView({ behavior: 'smooth', block: 'center' }); }
   }
@@ -244,15 +258,62 @@ export async function pantallaOt(app) {
     guardarBorrador();
   }
 
+  // ---------- Imágenes ----------
+  let imagenes = [];
+  const urlsImg = [];
+  const cuentaImg = el('small');
+  const tiraImg = el('div', { class: 'tira-imagenes' });
+
+  async function pintarImagenes() {
+    urlsImg.splice(0).forEach((u) => URL.revokeObjectURL(u));
+    const nodos = [];
+    for (const [i, id] of imagenes.entries()) {
+      const b = await leerFoto(id);
+      if (!b) continue;
+      const u = URL.createObjectURL(b);
+      urlsImg.push(u);
+      nodos.push(el('div', { class: 'imagen-ot', style: `background-image:url("${u}")` },
+        el('button', { class: 'ver', type: 'button', 'aria-label': `Ver imagen ${i + 1}`, onclick: () => window.open(u, '_blank') }),
+        el('span', { class: 'n' }, String(i + 1)),
+        el('button', { class: 'quitar', type: 'button', 'aria-label': `Quitar imagen ${i + 1}`, onclick: () => quitarImagen(id) }, '✕')));
+    }
+    tiraImg.replaceChildren(...nodos);
+    tiraImg.hidden = !nodos.length;
+    cuentaImg.textContent = imagenes.length === 0 ? 'Sin imágenes' : imagenes.length === 1 ? '1 imagen' : `${imagenes.length} imágenes`;
+  }
+
+  async function agregarImagenes() {
+    const files = await pedirImagenes();
+    if (!files.length) return;
+    await conEspera(files.length === 1 ? 'Agregando imagen…' : `Agregando ${files.length} imágenes…`, async () => {
+      for (const f of files) {
+        try { imagenes.push(await guardarFoto(await comprimir(f), 'ot')); } catch (_) { aviso('Una imagen no se pudo agregar.'); }
+      }
+    });
+    await pintarImagenes();
+    guardarBorrador();
+  }
+
+  async function quitarImagen(id) {
+    imagenes = imagenes.filter((x) => x !== id);
+    await db.del('fotos', id);
+    await pintarImagenes();
+    guardarBorrador();
+  }
+
   // ---------- Leer / guardar ----------
   function leerOt() {
     return {
       numero: f.numero.value.trim(), fecha: deIso(f.fecha.value) || hoy(), cliente: f.cliente.value.trim(), local: f.local.value.trim(),
       direccion: f.direccion.value.trim(), tecnico: f.tecnico.value.trim(), estado: f.estado.value.trim(),
-      lineas: lineas.map(({ ui }) => Object.fromEntries(Object.entries(ui).map(([k, v]) => [k, v.i.value.trim()])))
-        .filter((l) => Object.values(l).some(Boolean)),
+      lineas: lineas.map(({ ui }) => {
+        const l = Object.fromEntries(Object.entries(ui).map(([k, v]) => [k, v.i.value.trim()]));
+        if (l.tipoActividad.toLowerCase() !== OTROS.toLowerCase()) l.actividadOtra = '';
+        return l;
+      }).filter((l) => Object.values(l).some(Boolean)),
       observaciones: f.observaciones.value.trim(), recibeNombre: f.recibeNombre.value.trim(), recibeCargo: f.recibeCargo.value.trim(),
       firma: firmaComoImagen(),
+      imagenes: [...imagenes],
     };
   }
   let temporizador;
@@ -282,11 +343,14 @@ export async function pantallaOt(app) {
     trazos = [];
     firmaGuardada = ot.firma || null;
     dibujarFirma();
+    imagenes = [...(ot.imagenes || [])];
+    pintarImagenes();
   }
 
   async function nueva() {
     if (!(await confirmar('¿Empezar una OT nueva?', 'Se borran los datos de la OT actual. Se mantienen la fecha de hoy y el nombre del técnico.', 'Nueva OT'))) return;
     const tecnico = f.tecnico.value.trim();
+    for (const id of imagenes) await db.del('fotos', id);
     mostrar({ fecha: hoy(), tecnico });
     await db.set('kv', 'ot', leerOt());
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -310,7 +374,12 @@ export async function pantallaOt(app) {
       bytes = await conEspera('Creando la OT en PDF…', async () => {
         const logo = new Uint8Array(await (await fetch('img/logo_ncr_voyix.jpg')).arrayBuffer());
         const firma = ot.firma ? new Uint8Array(await (await fetch(ot.firma)).arrayBuffer()) : null;
-        return crearPdfOt(ot, firma, logo);
+        const imgs = [];
+        for (const id of ot.imagenes) {
+          const b = await leerFoto(id);
+          if (b) imgs.push(new Uint8Array(await b.arrayBuffer()));
+        }
+        return crearPdfOt(ot, firma, logo, imgs);
       });
     } catch (e) {
       aviso(`No se pudo crear el PDF: ${e.message || e}`);
@@ -334,17 +403,39 @@ export async function pantallaOt(app) {
       contenedor, btnAgregar,
       el('div', { class: 'seccion' }, 'Cierre'),
       el('div', { class: 'tarjeta' },
-        campo('Observaciones', f.observaciones), campo('Nombre quien recibe', f.recibeNombre), campo('Cargo quien recibe', f.recibeCargo),
+        campo('Observaciones', f.observaciones),
+        el('div', { class: 'etiqueta', style: 'margin-top:6px;display:flex;justify-content:space-between' }, 'Imágenes', cuentaImg),
+        el('p', { class: 'ayuda' }, 'Se agregan al final del PDF de la OT, dos por página.'),
+        tiraImg,
+        el('button', { class: 'boton borde ancho', type: 'button', onclick: agregarImagenes }, '+ Agregar imágenes'),
+        campo('Nombre quien recibe', f.recibeNombre), campo('Cargo quien recibe', f.recibeCargo),
         el('div', { class: 'etiqueta', style: 'margin-top:6px' }, 'Firma cliente'),
         cajaFirma,
         el('button', { class: 'boton-texto rojo', type: 'button', style: 'align-self:flex-end', onclick: borrarFirma }, 'Borrar firma')));
+  // ---------- Tipo de OT ----------
+  const chipTipo = el('button', { class: 'chip-trabajo', type: 'button', onclick: () => elegirTipo(false) }, 'OT NCR Voyix ▾');
+  async function elegirTipo(obligatorio) {
+    const i = await elegir('¿Qué orden de trabajo vas a llenar?', ['OT NCR Voyix', 'OT Bartech (próximamente)'],
+      { cancelar: obligatorio ? 'Volver al inicio' : 'Cancelar', obligatorio });
+    if (i === null) { if (obligatorio) location.hash = '#inicio'; return; }
+    if (i === 1) {
+      const j = await elegir('OT Bartech', ['Usar OT NCR'], {
+        mensaje: 'El formato de la OT Bartech estará disponible en una próxima actualización.',
+        cancelar: obligatorio ? 'Volver al inicio' : 'Cancelar', obligatorio,
+      });
+      if (j === null) { if (obligatorio) location.hash = '#inicio'; return; }
+    }
+    chipTipo.textContent = 'OT NCR Voyix ▾';
+  }
+
   app.replaceChildren(
-    cabecera('OT trabajos', { derecha: el('button', { class: 'boton-cab', type: 'button', onclick: nueva }, 'Nueva OT') }),
+    cabecera('OT trabajos', { debajo: chipTipo, derecha: el('button', { class: 'boton-cab', type: 'button', onclick: nueva }, 'Nueva OT') }),
     contenido,
     el('div', { class: 'barra-inferior' }, el('div', {}, el('button', { class: 'boton acento', type: 'button', onclick: generar }, 'GENERAR OT EN PDF'))));
 
   mostrar(guardada);
   requestAnimationFrame(ajustarLienzo);
+  elegirTipo(true);
   window.addEventListener('resize', () => { if (lienzo.isConnected) ajustarLienzo(); });
   // Guarda el avance mientras se escribe (solo los campos de esta pantalla).
   contenido.addEventListener('input', guardarBorrador);

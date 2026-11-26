@@ -99,17 +99,18 @@ export async function cargarImagen(file) {
 }
 
 let idFoto = 0;
-export async function guardarFoto(blob) {
-  const id = `f${Date.now()}_${++idFoto}_${Math.random().toString(36).slice(2, 8)}`;
+/** Guarda una foto. Las imágenes de la OT usan el prefijo «ot» para que el inventario no las borre. */
+export async function guardarFoto(blob, prefijo = 'f') {
+  const id = `${prefijo}${Date.now()}_${++idFoto}_${Math.random().toString(36).slice(2, 8)}`;
   await db.set('fotos', id, blob);
   return id;
 }
 export const leerFoto = (id) => db.get('fotos', id);
 
-/** Borra las fotos que ya no usa ninguna caja ni el formulario. */
+/** Borra las fotos del inventario que ya no usa ninguna caja (no toca las imágenes de la OT). */
 export async function limpiarFotos(enUso) {
   const usadas = new Set(enUso);
-  for (const k of await db.keys('fotos')) if (!usadas.has(k)) await db.del('fotos', k);
+  for (const k of await db.keys('fotos')) if (!String(k).startsWith('ot') && !usadas.has(k)) await db.del('fotos', k);
 }
 
 // ---------------- Utilidades ----------------
@@ -191,6 +192,19 @@ export async function pedirImagen() {
     const input = el('input', { type: 'file', accept: 'image/*' });
     if (i === 0) input.setAttribute('capture', 'environment');
     input.addEventListener('change', () => ok(input.files?.[0] || null));
+    input.click();
+  });
+}
+
+/** Pide una o varias imágenes: una foto con la cámara o varias de la galería. */
+export async function pedirImagenes() {
+  const i = await elegir('Agregar imágenes', ['📷  Tomar foto', '🖼  Elegir imágenes del teléfono']);
+  if (i === null) return [];
+  return new Promise((ok) => {
+    const input = el('input', { type: 'file', accept: 'image/*' });
+    if (i === 0) input.setAttribute('capture', 'environment');
+    else input.multiple = true;
+    input.addEventListener('change', () => ok([...(input.files || [])]));
     input.click();
   });
 }
