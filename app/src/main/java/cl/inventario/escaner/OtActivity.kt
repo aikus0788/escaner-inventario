@@ -19,6 +19,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
+import androidx.core.widget.doAfterTextChanged
 import cl.inventario.escaner.databinding.ActivityOtBinding
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
@@ -45,11 +46,29 @@ class OtActivity : AppCompatActivity() {
         val tipoEquipo: MaterialAutoCompleteTextView,
         val serie: EditText,
         val lectura: TextView,
+        val actividadOtra: EditText,
+        val cajaOtra: View,
     )
     private val lineas = mutableListOf<LineaUI>()
 
     /** Firma guardada como archivo (cuando se vuelve a abrir una OT a medio llenar). */
     private var archivoFirma: String = ""
+
+    /** Imágenes que van al final del PDF (archivos en la carpeta de imágenes de la OT). */
+    private val imagenes = mutableListOf<String>()
+
+    /** Tipo de OT elegido al entrar. */
+    private var tipoOt = ""
+
+    /** true cuando la cámara se abrió para agregar una imagen (y no para leer una etiqueta). */
+    private var camaraParaImagen = false
+
+    private val tomarImagen = registerForActivityResult(ActivityResultContracts.TakePicture()) { ok ->
+        if (ok) agregarImagenes(listOf(Uri.fromFile(fotoTemporal)))
+    }
+    private val elegirImagenes = registerForActivityResult(ActivityResultContracts.PickMultipleVisualMedia(20)) { uris ->
+        if (uris.isNotEmpty()) agregarImagenes(uris)
+    }
 
     private var objetivo: Pair<Int, Boolean>? = null   // (línea, esSerie)
     private val fotoTemporal by lazy { File(cacheDir, "foto_ot.jpg") }
@@ -76,6 +95,7 @@ class OtActivity : AppCompatActivity() {
         savedInstanceState?.let {
             val l = it.getInt("objLinea", -1)
             if (l >= 0) objetivo = l to it.getBoolean("objSerie")
+            tipoOt = it.getString("tipoOt", "")
         }
 
         b.btnVolver.setOnClickListener { finish() }
@@ -96,7 +116,122 @@ class OtActivity : AppCompatActivity() {
         b.btnBorrarFirma.setOnClickListener { borrarFirma() }
         b.imgFirma.setOnClickListener { aviso("Ya hay una firma guardada. Toca «Borrar firma» para firmar de nuevo.") }
 
+        b.btnAgregarImagenes.setOnClickListener { pedirImagenes() }
+        b.txtTipoOt.setOnClickListener { elegirTipoOt(obligatorio = false) }
+
         mostrar(almacen.cargar())
+        if (tipoOt.isEmpty()) b.root.post { elegirTipoOt(obligatorio = true) }
+    }
+
+    // ---------------- Tipo de OT ----------------
+
+    private fun elegirTipoOt(obligatorio: Boolean) {
+        val opciones = arrayOf("OT NCR Voyix", "OT Bartech (próximamente)")
+        val d = MaterialAlertDialogBuilder(this)
+            .setTitle("¿Qué orden de trabajo vas a llenar?")
+            .setItems(opciones) { _, i ->
+                if (i == 0) {
+                    tipoOt = TIPO_NCR
+                    b.txtTipoOt.text = "OT NCR Voyix ▾"
+                } else {
+                    MaterialAlertDialogBuilder(this)
+                        .setTitle("OT Bartech")
+                        .setMessage("El formato de la OT Bartech estará disponible en una próxima actualización.")
+                        .setPositiveButton("Usar OT NCR") { _, _ ->
+                            tipoOt = TIPO_NCR
+                            b.txtTipoOt.text = "OT NCR Voyix ▾"
+                        }
+                        .setNegativeButton(if (obligatorio && tipoOt.isEmpty()) "Volver al inicio" else "Cancelar") { _, _ ->
+                            if (tipoOt.isEmpty()) finish()
+                        }
+                        .setCancelable(false)
+                        .show()
+                }
+            }
+            .setCancelable(!obligatorio)
+        if (obligatorio) d.setNegativeButton("Volver al inicio") { _, _ -> finish() } else d.setNegativeButton("Cancelar", null)
+        d.show()
+    }
+
+    // ---------------- Imágenes ----------------
+
+    private fun carpetaImagenes() = File(carpetaOt(), "imagenes").apply { mkdirs() }
+
+    private fun pedirImagenes() {
+        Galeria.preguntar(this, {
+            val uri = FileProvider.getUriForFile(this, "$packageName.files", fotoTemporal)
+            try { tomarImagen.launch(uri) } catch (_: Exception) { aviso("No se encontró una app de cámara en este teléfono.") }
+        }, {
+            elegirImagenes.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+        })
+    }
+
+    /** Copia achicada de cada imagen a la carpeta de la OT. */
+    private fun agregarImagenes(uris: List<Uri>) {
+        aviso(if (uris.size == 1) "Agregando imagen…" else "Agregando ${uris.size} imágenes…")
+        Thread {
+            val nuevas = mutableListOf<String>()
+            for (u in uris) {
+                try {
+                    val origen = if (u.scheme == "file") {
+                        File(u.path!!)
+                    } else {
+                        val temp = File(cacheDir, "imagen_ot_temp.jpg").apply { delete() }
+                        if (!Galeria.copiar(this, u, temp)) continue
+                        temp
+                    }
+                    if (origen.exists() && origen.length() > 0) nuevas.add(Fotos.guardarDesde(this, origen, carpetaImagenes()))
+                } catch (_: Exception) {
+                }
+            }
+            runOnUiThread {
+                imagenes.addAll(nuevas)
+                pintarImagenes()
+                almacen.guardar(leer())
+                if (nuevas.size < uris.size) aviso("Algunas imágenes no se pudieron agregar.")
+            }
+        }.start()
+    }
+
+    private fun pintarImagenes() {
+        b.contenedorImagenes.removeAllViews()
+        val lado = (96 * resources.displayMetrics.density).toInt()
+        imagenes.forEachIndexed { i, nombre ->
+            val v = layoutInflater.inflate(R.layout.item_imagen_ot, b.contenedorImagenes, false)
+            val f = File(carpetaImagenes(), nombre)
+            v.findViewById<android.widget.ImageView>(R.id.img).setImageBitmap(miniatura(f, lado))
+            v.findViewById<TextView>(R.id.txtNum).text = "${i + 1}"
+            v.findViewById<View>(R.id.img).setOnClickListener { verArchivo(f, "image/jpeg") }
+            v.findViewById<View>(R.id.btnQuitar).setOnClickListener {
+                imagenes.remove(nombre)
+                f.delete()
+                pintarImagenes()
+                almacen.guardar(leer())
+            }
+            b.contenedorImagenes.addView(v)
+        }
+        b.scrollImagenes.visibility = if (imagenes.isEmpty()) View.GONE else View.VISIBLE
+        b.txtCuentaImagenes.text = when (imagenes.size) { 0 -> "Sin imágenes"; 1 -> "1 imagen"; else -> "${imagenes.size} imágenes" }
+    }
+
+    private fun miniatura(f: File, lado: Int): Bitmap? {
+        if (!f.exists()) return null
+        val o = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeFile(f.absolutePath, o)
+        var m = 1
+        while (maxOf(o.outWidth, o.outHeight) / (m * 2) >= lado * 2) m *= 2
+        return BitmapFactory.decodeFile(f.absolutePath, BitmapFactory.Options().apply { inSampleSize = m })
+    }
+
+    private fun verArchivo(f: File, tipo: String) {
+        try {
+            startActivity(Intent(Intent.ACTION_VIEW).apply {
+                setDataAndType(uriDe(f), tipo)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            })
+        } catch (_: Exception) {
+            aviso("No hay una app para ver imágenes.")
+        }
     }
 
     override fun onPause() {
@@ -110,6 +245,7 @@ class OtActivity : AppCompatActivity() {
             outState.putInt("objLinea", it.first)
             outState.putBoolean("objSerie", it.second)
         }
+        outState.putString("tipoOt", tipoOt)
     }
 
     private fun mostrarListaAlTocar(v: MaterialAutoCompleteTextView) {
@@ -139,6 +275,10 @@ class OtActivity : AppCompatActivity() {
         archivoFirma = ot.firma
         b.firma.borrar()
         mostrarFirmaGuardada()
+
+        imagenes.clear()
+        imagenes.addAll(ot.imagenes.filter { File(carpetaImagenes(), it).exists() })
+        pintarImagenes()
     }
 
     private fun leer() = OrdenTrabajo(
@@ -150,12 +290,15 @@ class OtActivity : AppCompatActivity() {
         tecnico = b.edtTecnico.texto(),
         estado = b.edtEstado.texto(),
         lineas = lineas.map {
-            LineaOt(it.tipoActividad.texto(), it.cantidad.texto(), it.modelo.texto(), it.tipoEquipo.texto(), it.serie.texto())
+            val tipo = it.tipoActividad.texto()
+            val otra = if (tipo.equals(OrdenTrabajo.OTROS, true)) it.actividadOtra.texto() else ""
+            LineaOt(tipo, it.cantidad.texto(), it.modelo.texto(), it.tipoEquipo.texto(), it.serie.texto(), otra)
         }.filterNot { it.vacia() },
         observaciones = b.edtObservaciones.text?.toString()?.trim().orEmpty(),
         recibeNombre = b.edtRecibeNombre.texto(),
         recibeCargo = b.edtRecibeCargo.texto(),
         firma = archivoFirma,
+        imagenes = imagenes.toList(),
     )
 
     private fun EditText.texto() = text?.toString()?.trim().orEmpty()
@@ -171,6 +314,7 @@ class OtActivity : AppCompatActivity() {
         val ui = LineaUI(
             v, v.findViewById(R.id.edtTipoActividad), v.findViewById(R.id.edtCantidad), v.findViewById(R.id.edtModelo),
             v.findViewById(R.id.edtTipoEquipo), v.findViewById(R.id.edtSerie), v.findViewById(R.id.txtLectura),
+            v.findViewById(R.id.edtActividadOtra), v.findViewById(R.id.boxActividadOtra),
         )
         ui.tipoActividad.setAdapter(BuscadorLista(this, OrdenTrabajo.TIPOS_ACTIVIDAD))
         ui.tipoEquipo.setAdapter(BuscadorLista(this, OrdenTrabajo.TIPOS_EQUIPO))
@@ -181,6 +325,18 @@ class OtActivity : AppCompatActivity() {
         ui.modelo.setText(l.modelo)
         ui.tipoEquipo.setText(l.tipoEquipo, false)
         ui.serie.setText(l.serie)
+        ui.actividadOtra.setText(l.actividadOtra)
+        // «Otros»: aparece un campo para escribir la actividad.
+        val revisarOtros = {
+            val otros = ui.tipoActividad.text?.toString()?.trim().equals(OrdenTrabajo.OTROS, ignoreCase = true)
+            ui.cajaOtra.visibility = if (otros) View.VISIBLE else View.GONE
+        }
+        revisarOtros()
+        ui.tipoActividad.doAfterTextChanged {
+            val antes = ui.cajaOtra.visibility
+            revisarOtros()
+            if (antes != View.VISIBLE && ui.cajaOtra.visibility == View.VISIBLE) ui.actividadOtra.requestFocus()
+        }
 
         v.findViewById<MaterialButton>(R.id.btnQuitarLinea).setOnClickListener { quitarLinea(ui) }
         v.findViewById<MaterialButton>(R.id.btnFotoModelo).setOnClickListener { abrirCamara(lineas.indexOf(ui), esSerie = false) }
@@ -357,6 +513,7 @@ class OtActivity : AppCompatActivity() {
             .setMessage("Se borran los datos de la OT actual. Se mantienen la fecha de hoy y el nombre del técnico.")
             .setPositiveButton("Nueva OT") { _, _ ->
                 File(carpetaOt(), "firma.png").delete()
+                carpetaImagenes().listFiles()?.forEach { it.delete() }
                 val tecnico = b.edtTecnico.texto()
                 mostrar(OrdenTrabajo(fecha = formatoFecha.format(Date()), tecnico = tecnico))
                 almacen.guardar(leer())
@@ -401,7 +558,8 @@ class OtActivity : AppCompatActivity() {
         carpeta.listFiles()?.forEach { it.delete() }
         val archivo = File(carpeta, nombrePdf(ot))
         Thread {
-            val error = try { OtPdf.generar(this, ot, firma, archivo); null } catch (e: Exception) { e.message ?: "error" }
+            val archivosImg = ot.imagenes.map { File(carpetaImagenes(), it) }
+            val error = try { OtPdf.generar(this, ot, firma, archivo, archivosImg); null } catch (e: Exception) { e.message ?: "error" }
             runOnUiThread {
                 if (error != null) {
                     aviso("No se pudo crear el PDF: $error")
@@ -466,6 +624,7 @@ class OtActivity : AppCompatActivity() {
     private fun aviso(m: String) = Toast.makeText(this, m, Toast.LENGTH_LONG).show()
 
     companion object {
+        const val TIPO_NCR = "NCR"
         val CLIENTES = listOf(
             "Paris", "Easy", "Jumbo", "Santa Isabel", "Spid", "Lider", "Acuenta",
             "Mayorista", "Falabella", "Tottus", "Sodimac",

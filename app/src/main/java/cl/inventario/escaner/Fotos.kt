@@ -19,7 +19,7 @@ object Fotos {
     fun archivo(ctx: Context, nombre: String): File = File(carpeta(ctx), nombre)
 
     /** Copia achicada y derecha de la foto recién sacada. Devuelve el nombre del archivo guardado. */
-    fun guardarDesde(ctx: Context, original: File): String {
+    fun guardarDesde(ctx: Context, original: File, destino: File = carpeta(ctx)): String {
         val opciones = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         BitmapFactory.decodeFile(original.absolutePath, opciones)
         var muestra = 1
@@ -44,7 +44,7 @@ object Fotos {
         if (giro != 0f) bmp = Bitmap.createBitmap(bmp, 0, 0, bmp.width, bmp.height, Matrix().apply { postRotate(giro) }, true)
 
         val nombre = UUID.randomUUID().toString() + ".jpg"
-        archivo(ctx, nombre).outputStream().use { bmp.compress(Bitmap.CompressFormat.JPEG, CALIDAD, it) }
+        File(destino.apply { mkdirs() }, nombre).outputStream().use { bmp.compress(Bitmap.CompressFormat.JPEG, CALIDAD, it) }
         return nombre
     }
 

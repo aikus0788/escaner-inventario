@@ -47,6 +47,20 @@
                 android:textColor="@color/blanco"
                 android:textSize="20sp"
                 android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/txtTipoOt"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:background="@drawable/fondo_trabajo"
+                android:foreground="?attr/selectableItemBackground"
+                android:paddingHorizontal="10dp"
+                android:paddingVertical="3dp"
+                android:text="OT NCR Voyix ▾"
+                android:textColor="@color/tinta"
+                android:textSize="13sp"
+                android:textStyle="bold" />
         </LinearLayout>
 
         <com.google.android.material.button.MaterialButton
@@ -265,6 +279,62 @@
                             android:inputType="textCapSentences|textMultiLine"
                             android:minLines="3" />
                     </com.google.android.material.textfield.TextInputLayout>
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="16dp"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal">
+
+                        <TextView
+                            style="@style/Etiqueta"
+                            android:layout_width="0dp"
+                            android:layout_marginBottom="0dp"
+                            android:layout_weight="1"
+                            android:text="IMÁGENES" />
+
+                        <TextView
+                            android:id="@+id/txtCuentaImagenes"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:textColor="@color/gris"
+                            android:textSize="12sp" />
+                    </LinearLayout>
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="2dp"
+                        android:text="Se agregan al final del PDF de la OT, dos por página."
+                        android:textColor="@color/gris"
+                        android:textSize="12sp" />
+
+                    <HorizontalScrollView
+                        android:id="@+id/scrollImagenes"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:scrollbars="none"
+                        android:visibility="gone">
+
+                        <LinearLayout
+                            android:id="@+id/contenedorImagenes"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:orientation="horizontal" />
+                    </HorizontalScrollView>
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btnAgregarImagenes"
+                        style="@style/Widget.Material3.Button.OutlinedButton"
+                        android:layout_width="match_parent"
+                        android:layout_height="52dp"
+                        android:layout_marginTop="8dp"
+                        android:text="+ Agregar imágenes"
+                        android:textColor="@color/verde"
+                        app:cornerRadius="8dp"
+                        app:strokeColor="@color/verde" />
 
                     <com.google.android.material.textfield.TextInputLayout
                         style="@style/Widget.Material3.TextInputLayout.OutlinedBox.Dense"

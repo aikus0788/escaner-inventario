@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="96dp"
+    android:layout_height="96dp"
+    android:layout_marginEnd="8dp">
+
+    <ImageView
+        android:id="@+id/img"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="@color/linea"
+        android:contentDescription="Imagen de la OT"
+        android:scaleType="centerCrop" />
+
+    <TextView
+        android:id="@+id/txtNum"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom|start"
+        android:background="@color/verde"
+        android:paddingHorizontal="6dp"
+        android:paddingVertical="1dp"
+        android:textColor="@color/blanco"
+        android:textSize="11sp"
+        android:textStyle="bold" />
+
+    <ImageButton
+        android:id="@+id/btnQuitar"
+        android:layout_width="32dp"
+        android:layout_height="32dp"
+        android:layout_gravity="top|end"
+        android:background="@drawable/fondo_quitar"
+        android:contentDescription="Quitar imagen"
+        android:src="@drawable/ic_cerrar" />
+</FrameLayout>

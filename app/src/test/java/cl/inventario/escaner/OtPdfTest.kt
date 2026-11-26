@@ -72,6 +72,8 @@ class OtPdfTest {
                 LineaOt("Instalación", "2", "Zebra DS2208", "Scanner de mano", "S/N 21345B0123456789"),
                 LineaOt("Instalación", "1", "NCR 7879-6000", "Scanner de mesón", "18-34567890"),
                 LineaOt("Mantención", "10", "Elo 1509L", "Pantalla", "J21A012345"),
+                LineaOt("Reposicionamiento", "1", "", "SSCO", "SSCO-91"),
+                LineaOt("Otros", "1", "", "Gaveta", "G-0001", actividadOtra = "Cambio de cerradura"),
             ),
             observaciones = "Se retira POS antiguo y se instala equipo nuevo. Cableado ordenado y rotulado. " +
                 "Cliente conforme con la instalación. Se deja boleta de prueba certificada.",
@@ -79,5 +81,21 @@ class OtPdfTest {
         )
         dibujar(ot, firmaDePrueba(), "ot-preview-llena.png")
         dibujar(OrdenTrabajo(), null, "ot-preview-vacia.png")
+
+        // Página de imágenes (2 por hoja)
+        val ctx = RuntimeEnvironment.getApplication()
+        val logo = BitmapFactory.decodeResource(ctx.resources, R.drawable.logo_ncr_voyix)
+        val fotos = listOf("pos-serie", "notas").map { n ->
+            javaClass.classLoader!!.getResourceAsStream("fotos/$n.jpg")!!.use { BitmapFactory.decodeStream(it) }
+        }
+        val bmp = Bitmap.createBitmap(OtPdf.ANCHO * 2, OtPdf.ALTO * 2, Bitmap.Config.ARGB_8888)
+        val c = Canvas(bmp)
+        c.scale(2f, 2f)
+        OtPdf.dibujarImagenes(c, ot, fotos, 0, 3, logo)
+        File("build/ot-preview-imagenes.png").outputStream().use { bmp.compress(Bitmap.CompressFormat.PNG, 100, it) }
+
+        // «Otros» usa lo escrito; el resto, el tipo elegido.
+        org.junit.Assert.assertEquals("Cambio de cerradura", ot.lineas[6].actividadParaPdf)
+        org.junit.Assert.assertEquals("Reposicionamiento", ot.lineas[5].actividadParaPdf)
     }
 }

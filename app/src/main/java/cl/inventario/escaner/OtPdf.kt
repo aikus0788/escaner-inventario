@@ -63,18 +63,63 @@ object OtPdf {
     private const val X_DATOS = 219.5f
     private const val X_FIN = 534.5f
 
-    /** Crea el PDF de la OT en [destino]. */
-    fun generar(ctx: Context, ot: OrdenTrabajo, firma: Bitmap?, destino: File) {
+    /** Crea el PDF de la OT en [destino]; las [imagenes] van en páginas adicionales, dos por hoja. */
+    fun generar(ctx: Context, ot: OrdenTrabajo, firma: Bitmap?, destino: File, imagenes: List<File> = emptyList()) {
         val logo = BitmapFactory.decodeResource(ctx.resources, R.drawable.logo_ncr_voyix)
         val doc = PdfDocument()
         try {
             val pagina = doc.startPage(PdfDocument.PageInfo.Builder(ANCHO, ALTO, 1).create())
             dibujar(pagina.canvas, ot, firma, logo)
             doc.finishPage(pagina)
+
+            val validas = imagenes.filter { it.exists() && it.length() > 0 }
+            validas.chunked(POR_PAGINA).forEachIndexed { i, grupo ->
+                val p = doc.startPage(PdfDocument.PageInfo.Builder(ANCHO, ALTO, i + 2).create())
+                val bitmaps = grupo.map { cargarReducida(it) }
+                dibujarImagenes(p.canvas, ot, bitmaps, i * POR_PAGINA, validas.size, logo)
+                doc.finishPage(p)
+                bitmaps.forEach { it?.recycle() }
+            }
             destino.outputStream().use { doc.writeTo(it) }
         } finally {
             doc.close()
         }
+    }
+
+    private const val POR_PAGINA = 2
+
+    /** Imagen reducida (máx. 1600 px) para no llenar la memoria. */
+    private fun cargarReducida(f: File): Bitmap? {
+        val o = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeFile(f.absolutePath, o)
+        var m = 1
+        while (maxOf(o.outWidth, o.outHeight) / (m * 2) >= 1600) m *= 2
+        return BitmapFactory.decodeFile(f.absolutePath, BitmapFactory.Options().apply { inSampleSize = m })
+    }
+
+    /** Página de imágenes: encabezado de la OT y hasta 2 imágenes con su número. */
+    fun dibujarImagenes(c: Canvas, ot: OrdenTrabajo, imagenes: List<Bitmap?>, desde: Int, total: Int, logo: Bitmap?) {
+        c.drawColor(Color.WHITE)
+        logo?.let { c.drawBitmap(it, null, RectF(50.4f, 21.6f, 211.6f, 47.0f), Paint(Paint.FILTER_BITMAP_FLAG)) }
+        val titulo = "ORDEN DE TRABAJO" + (ot.numero.takeIf { it.isNotBlank() }?.let { " N° $it" } ?: "") + " · IMÁGENES"
+        texto(c, titulo, 297.6f, 61.5f, Alinear.CENTRO, 490f)
+        val cajas = listOf(RectF(51.84f, 78f, 539.4f, 438f), RectF(51.84f, 452f, 539.4f, 800f))
+        val borde = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.rgb(214, 217, 226); style = Paint.Style.STROKE; strokeWidth = 0.8f }
+        imagenes.forEachIndexed { i, bmp ->
+            val caja = cajas[i]
+            texto(c, "Imagen ${desde + i + 1} de $total", caja.left, caja.top + 11f, Alinear.IZQ, 300f, negrita = true, color = VERDE)
+            val area = RectF(caja.left, caja.top + 18f, caja.right, caja.bottom)
+            c.drawRect(area, borde)
+            if (bmp != null) {
+                val e = minOf((area.width() - 8) / bmp.width, (area.height() - 8) / bmp.height)
+                val w = bmp.width * e
+                val h = bmp.height * e
+                val x = area.centerX() - w / 2
+                val y = area.centerY() - h / 2
+                c.drawBitmap(bmp, null, RectF(x, y, x + w, y + h), Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG))
+            }
+        }
+        texto(c, "Preparado por Infomaxis", 51.4f, 815.7f, Alinear.IZQ, 300f)
     }
 
     /** Dibuja la OT en un lienzo medido en puntos (595 × 842). */
@@ -110,7 +155,7 @@ object OtPdf {
         ot.lineas.filterNot { it.vacia() }.take(OrdenTrabajo.MAX_LINEAS).forEachIndexed { i, l ->
             val abajo = FILAS_DETALLE[i].second
             val base = abajo - 7.2f
-            val valores = listOf(l.tipoActividad, l.cantidad, l.modelo, l.tipoEquipo, l.serie)
+            val valores = listOf(l.actividadParaPdf, l.cantidad, l.modelo, l.tipoEquipo, l.serie)
             valores.forEachIndexed { j, v ->
                 val (x0, x1) = COLUMNAS[j]
                 if (j == 1) dato(c, v, (x0 + x1) / 2, base, x1 - x0 - 6, Alinear.CENTRO)
