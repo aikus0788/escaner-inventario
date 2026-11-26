@@ -65,13 +65,13 @@ class HomeActivity : AppCompatActivity() {
     // ---------------- Compartir la app ----------------
 
     private val mensajeCompartir get() =
-        "Descarga la app Infomaxis para Android:\n$ENLACE_DESCARGA\n\n" +
-            "Abre el enlace en el teléfono, toca el archivo descargado y luego «Instalar»."
+        "Descarga la app Infomaxis (Android o iPhone):\n$ENLACE_DESCARGA\n\n" +
+            "Abre el enlace en el teléfono y sigue los pasos que aparecen."
 
     private fun compartirApp() {
         MaterialAlertDialogBuilder(this)
             .setTitle("Descarga app")
-            .setMessage("Enlace para instalar Infomaxis en otro teléfono Android. Siempre descarga la versión más reciente.\n\n$ENLACE_DESCARGA")
+            .setMessage("Enlace para instalar Infomaxis en otro teléfono. Detecta si es Android (descarga la app) o iPhone (abre la versión web).\n\n$ENLACE_DESCARGA")
             .setPositiveButton("Compartir") { _, _ -> compartir(null) }
             .setNegativeButton("WhatsApp") { _, _ -> compartir("com.whatsapp") }
             .setNeutralButton("Copiar enlace") { _, _ -> copiarEnlace() }
@@ -113,8 +113,7 @@ class HomeActivity : AppCompatActivity() {
     }
 
     companion object {
-        /** Siempre apunta a la última versión publicada. */
-        const val ENLACE_DESCARGA =
-            "https://github.com/aikus0788/escaner-inventario/releases/latest/download/Infomaxis.apk"
+        /** Página de descarga: en Android ofrece la última APK; en iPhone, la versión web instalable. */
+        const val ENLACE_DESCARGA = "https://aikus0788.github.io/escaner-inventario/descargar.html"
     }
 }
