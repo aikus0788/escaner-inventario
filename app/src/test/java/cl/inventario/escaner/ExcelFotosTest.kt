@@ -42,17 +42,13 @@ class ExcelFotosTest {
             base.copy(id = 3, trabajo = Caja.INSTALACION, tipo = Caja.SSCO, numeroPos = "07", fotos = mapOf("foto_adicional" to f4.name)),
         )
 
-        val fotos = mutableListOf<XlsxWriter.FotoCelda>()
-        cajas.forEachIndexed { i, c ->
-            Caja.FOTOS_POS.forEachIndexed { j, (k, nombre) ->
-                val f = c.fotos[k] ?: return@forEachIndexed
-                fotos.add(XlsxWriter.FotoCelda(i, Caja.PRIMERA_COLUMNA_FOTO + j, File(dir, f), nombre))
-            }
-        }
-        assertEquals(4, fotos.size)
+        val hojas = ExcelInventario.hojas(cajas) { File(dir, it) }
+        assertEquals(listOf(Caja.RETIRO, Caja.INSTALACION), hojas.map { it.nombre })
+        assertEquals(3, hojas[0].fotos.size)
+        assertEquals(1, hojas[1].fotos.size)
 
         val salida = File("build/prueba-fotos.xlsx")
-        XlsxWriter.escribir(salida, Caja.ENCABEZADO, cajas.mapIndexed { i, c -> c.comoFila(i + 1) }, Caja.ANCHOS, fotos)
+        XlsxWriter.escribir(salida, hojas)
 
         val leidas = salida.inputStream().use { XlsxReader.leerCajas(it) }
         assertEquals(3, leidas.size)

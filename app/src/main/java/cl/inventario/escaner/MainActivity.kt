@@ -831,20 +831,8 @@ class MainActivity : AppCompatActivity() {
         val carpeta = File(cacheDir, "excel").apply { mkdirs() }
         carpeta.listFiles()?.forEach { it.delete() }
         val archivo = File(carpeta, nombre)
-        val fotos = mutableListOf<XlsxWriter.FotoCelda>()
-        filas.forEachIndexed { i, c ->
-            Caja.FOTOS_POS.forEachIndexed { j, (k, nombre) ->
-                val f = c.fotos[k] ?: return@forEachIndexed
-                fotos.add(XlsxWriter.FotoCelda(i, Caja.PRIMERA_COLUMNA_FOTO + j, Fotos.archivo(this, f), "$nombre · ${textoCaja(c)}"))
-            }
-        }
-        XlsxWriter.escribir(
-            archivo,
-            Caja.ENCABEZADO,
-            filas.mapIndexed { i, c -> c.comoFila(i + 1) },
-            Caja.ANCHOS,
-            fotos,
-        )
+        // Una pestaña para Retiro y otra para Instalación.
+        XlsxWriter.escribir(archivo, ExcelInventario.hojas(filas) { Fotos.archivo(this, it) })
         return archivo
     }
 

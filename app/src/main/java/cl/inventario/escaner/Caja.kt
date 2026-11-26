@@ -254,3 +254,38 @@ object Convertidor {
         )
     }
 }
+
+/** Arma las pestañas del Excel del inventario: una para Retiro y otra para Instalación. */
+object ExcelInventario {
+
+    fun textoCaja(c: Caja): String = listOf(
+        c.tipo + (c.numeroPos.takeIf { it.isNotEmpty() }?.let { " N° $it" } ?: ""),
+        c.ubicacion,
+        listOf(c.cliente, c.tienda).filter { it.isNotEmpty() }.joinToString(" "),
+    ).filter { it.isNotBlank() }.joinToString(" · ")
+
+    /**
+     * Pestañas «Retiro» e «Instalación» (siempre las dos, aunque una esté vacía).
+     * Si hay cajas antiguas sin trabajo, van a una tercera pestaña «Sin trabajo».
+     * [archivoFoto] entrega el archivo de cada foto guardada.
+     */
+    fun hojas(cajas: List<Caja>, archivoFoto: (String) -> java.io.File): List<XlsxWriter.Hoja> {
+        val grupos = linkedMapOf(
+            Caja.RETIRO to cajas.filter { it.trabajo == Caja.RETIRO },
+            Caja.INSTALACION to cajas.filter { it.trabajo == Caja.INSTALACION },
+        )
+        val otras = cajas.filter { it.trabajo != Caja.RETIRO && it.trabajo != Caja.INSTALACION }
+        if (otras.isNotEmpty()) grupos["Sin trabajo"] = otras
+
+        return grupos.map { (nombre, lista) ->
+            val fotos = mutableListOf<XlsxWriter.FotoCelda>()
+            lista.forEachIndexed { i, c ->
+                Caja.FOTOS_POS.forEachIndexed { j, (k, titulo) ->
+                    val f = c.fotos[k] ?: return@forEachIndexed
+                    fotos.add(XlsxWriter.FotoCelda(i, Caja.PRIMERA_COLUMNA_FOTO + j, archivoFoto(f), "$titulo · ${textoCaja(c)}"))
+                }
+            }
+            XlsxWriter.Hoja(nombre, Caja.ENCABEZADO, lista.mapIndexed { i, c -> c.comoFila(i + 1) }, Caja.ANCHOS, fotos)
+        }
+    }
+}

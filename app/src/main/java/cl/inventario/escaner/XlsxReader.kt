@@ -19,12 +19,39 @@ object XlsxReader {
     /** Una caja leída del Excel y sus fotos (clave del campo → bytes JPEG). */
     data class CajaLeida(val caja: Caja, val fotos: Map<String, ByteArray>)
 
+    /** Lee todas las pestañas con cajas (por ejemplo «Retiro» e «Instalación») y las junta. */
     fun leerCajas(input: InputStream): List<CajaLeida> {
         val archivos = leerZip(input)
         val compartidos = archivos["xl/sharedStrings.xml"]?.let { leerCompartidos(it) } ?: emptyList()
-        val hojas = hojasPorNombre(archivos)
-        val principal = hojas.entries.firstOrNull()?.value ?: primeraHojaPorArchivo(archivos)
-            ?: throw FormatoNoValido("El Excel no tiene hojas con datos.")
+        val hojas = hojasPorNombre(archivos).ifEmpty {
+            val unica = primeraHojaPorArchivo(archivos) ?: throw FormatoNoValido("El Excel no tiene hojas con datos.")
+            linkedMapOf("" to unica)
+        }
+        val resultado = mutableListOf<CajaLeida>()
+        var algunaConColumnas = false
+        for ((nombre, ruta) in hojas) {
+            val cajas = leerPestana(archivos, ruta, compartidos, nombre, resultado.size) ?: continue
+            algunaConColumnas = true
+            resultado.addAll(cajas)
+        }
+        if (!algunaConColumnas) throw FormatoNoValido("No encontré las columnas (Tipo, Modelo, Serie…) en el Excel.")
+        return resultado
+    }
+
+    /** Trabajo según el nombre de la pestaña, para Excels donde la columna «Trabajo» venga vacía. */
+    private fun trabajoDePestana(nombre: String): String {
+        val n = normalizar(nombre)
+        return when {
+            n.startsWith("ret") -> Caja.RETIRO
+            n.startsWith("ins") -> Caja.INSTALACION
+            else -> ""
+        }
+    }
+
+    /** Cajas de una pestaña, o null si la pestaña no tiene las columnas del inventario. */
+    private fun leerPestana(
+        archivos: Map<String, ByteArray>, principal: String, compartidos: List<String>, nombreHoja: String, desde: Int,
+    ): List<CajaLeida>? {
         val hoja = leerHoja(archivos.getValue(principal), compartidos)
         val numerosDeFila = hoja.keys.toList()
         val tabla = hoja.values.toList()
@@ -34,7 +61,7 @@ object XlsxReader {
             val n = fila.map { normalizar(it) }
             n.any { it == "modelo" || it == "serie" || it.endsWith("serie") } || n.any { it.startsWith("tipo") }
         }
-        if (iEnc < 0) throw FormatoNoValido("No encontré las columnas (Tipo, Modelo, Serie…) en la primera hoja.")
+        if (iEnc < 0) return null
         val enc = tabla[iEnc].map { normalizar(it) }
 
         fun col(vararg nombres: String): Int = enc.indexOfFirst { h -> nombres.any { n -> h == n } }
@@ -62,7 +89,7 @@ object XlsxReader {
         }
         val formatoNuevo = colsPieza.values.any { it.first >= 0 || it.second >= 0 }
 
-        val base = System.currentTimeMillis()
+        val base = System.currentTimeMillis() + desde * 1000L
         val cajas = mutableListOf<CajaLeida>()
         for (i in iEnc + 1 until tabla.size) {
             val f = tabla[i]
@@ -81,6 +108,7 @@ object XlsxReader {
                         when {
                             t.startsWith("ret", true) -> Caja.RETIRO
                             t.startsWith("ins", true) -> Caja.INSTALACION
+                            t.isBlank() -> trabajoDePestana(nombreHoja)
                             else -> t
                         }
                     },

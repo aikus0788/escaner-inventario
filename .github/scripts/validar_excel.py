@@ -7,7 +7,6 @@ import openpyxl
 
 ruta = sys.argv[1]
 
-# Todos los XML del archivo deben estar bien formados.
 with zipfile.ZipFile(ruta) as z:
     assert z.testzip() is None
     for n in z.namelist():
@@ -16,26 +15,24 @@ with zipfile.ZipFile(ruta) as z:
     medios = [n for n in z.namelist() if n.startswith("xl/media/")]
 
 wb = openpyxl.load_workbook(ruta)
-assert wb.sheetnames == ["Inventario"], wb.sheetnames
-inv = wb["Inventario"]
-
-enc = [c.value for c in inv[1]]
+assert wb.sheetnames == ["Retiro", "Instalación"], wb.sheetnames
 fotos = ["Foto: Serie del POS", "Foto: Cómo quedó el equipo", "Foto: Cableado del POS",
          "Foto: Boleta POS certificado", "Foto: Adicional"]
-assert enc[-5:] == fotos, enc[-6:]
-assert enc[2] == "Trabajo" and inv.cell(2, 3).value == "Retiro" and inv.cell(4, 3).value == "Instalación"
-assert enc[-6] == "Estado POS" and inv.cell(2, len(enc) - 5).value == "Operativo, limpio"
-primera = len(enc) - 5  # índice (desde 0) de la primera columna de fotos
 
-assert len(inv._images) == 4 == len(medios), (len(inv._images), medios)
-anclas = sorted((img.anchor._from.row, img.anchor._from.col) for img in inv._images)
-esperadas = sorted([(1, primera), (1, primera + 1), (1, primera + 2), (3, primera + 4)])
-assert anclas == esperadas, (anclas, esperadas)
-# Celdas de fotos sin texto (en blanco).
-for fila in range(2, 5):
-    for col in range(primera + 1, primera + 6):
-        assert inv.cell(fila, col).value is None
-assert inv.row_dimensions[2].height and inv.row_dimensions[2].height > 100
-assert not inv.row_dimensions[3].height  # caja sin fotos: alto normal
+ret, ins = wb["Retiro"], wb["Instalación"]
+for h in (ret, ins):
+    enc = [c.value for c in h[1]]
+    assert enc[-5:] == fotos and enc[2] == "Trabajo", enc
+primera = len([c for c in ret[1]]) - 5
 
-print("Excel de prueba OK:", len(inv._images), "fotos,", inv.max_row - 1, "cajas")
+# Retiro: 2 cajas (N° 1 y 2), la primera con 3 fotos
+assert ret.max_row == 3, ret.max_row
+assert [ret.cell(r, 1).value for r in (2, 3)] == ["1", "2"]
+assert all(ret.cell(r, 3).value == "Retiro" for r in (2, 3))
+assert sorted((i.anchor._from.row, i.anchor._from.col) for i in ret._images) == [(1, primera), (1, primera + 1), (1, primera + 2)]
+# Instalación: 1 caja (N° 1) con la foto adicional
+assert ins.max_row == 2 and ins.cell(2, 1).value == "1" and ins.cell(2, 3).value == "Instalación"
+assert [(i.anchor._from.row, i.anchor._from.col) for i in ins._images] == [(1, primera + 4)]
+assert len(medios) == 4
+
+print("Excel de prueba OK: pestañas", wb.sheetnames, "·", len(ret._images) + len(ins._images), "fotos")

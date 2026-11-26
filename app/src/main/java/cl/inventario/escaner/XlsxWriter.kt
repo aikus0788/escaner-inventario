@@ -26,16 +26,29 @@ object XlsxWriter {
     private const val S_TEXTO = 2
     private const val S_TEXTO_ARRIBA = 3
 
+    /** Una pestaña del Excel. */
+    data class Hoja(
+        val nombre: String,
+        val encabezado: List<String>,
+        val filas: List<List<String>>,
+        val anchos: List<Int>,
+        val fotos: List<FotoCelda> = emptyList(),
+    )
+
+    /** Un Excel de una sola pestaña. */
     fun escribir(
         destino: File,
         encabezado: List<String>,
         filas: List<List<String>>,
         anchos: List<Int>,
         fotos: List<FotoCelda> = emptyList(),
-    ) {
-        val fotosOk = fotos.filter { it.archivo.exists() && it.archivo.length() > 0 }
-        val hayFotos = fotosOk.isNotEmpty()
-        val filasConFoto = fotosOk.map { it.fila }.toSet()
+    ) = escribir(destino, listOf(Hoja(HOJA_PRINCIPAL, encabezado, filas, anchos, fotos)))
+
+    /** Un Excel con varias pestañas (por ejemplo «Retiro» e «Instalación»). */
+    fun escribir(destino: File, hojas: List<Hoja>) {
+        require(hojas.isNotEmpty())
+        // Por cada hoja, solo las fotos cuyo archivo existe.
+        val fotosPorHoja = hojas.map { h -> h.fotos.filter { it.archivo.exists() && it.archivo.length() > 0 } }
 
         ZipOutputStream(FileOutputStream(destino)).use { zip ->
             fun agregar(nombre: String, contenido: String) {
@@ -44,22 +57,23 @@ object XlsxWriter {
                 zip.closeEntry()
             }
 
-            val extra = if (hayFotos) {
-                """<Default Extension="jpg" ContentType="image/jpeg"/>
-<Override PartName="/xl/drawings/drawing1.xml" ContentType="application/vnd.openxmlformats-officedocument.drawing+xml"/>"""
-            } else ""
-            agregar(
-                "[Content_Types].xml",
-                """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+            val tipos = StringBuilder()
+            tipos.append("""<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
 <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
 <Default Extension="xml" ContentType="application/xml"/>
-$extra
+<Default Extension="jpg" ContentType="image/jpeg"/>
 <Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>
-<Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
 <Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>
-</Types>""",
-            )
+""")
+            hojas.forEachIndexed { i, _ ->
+                tipos.append("""<Override PartName="/xl/worksheets/sheet${i + 1}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>""").append('\n')
+                if (fotosPorHoja[i].isNotEmpty()) {
+                    tipos.append("""<Override PartName="/xl/drawings/drawing${i + 1}.xml" ContentType="application/vnd.openxmlformats-officedocument.drawing+xml"/>""").append('\n')
+                }
+            }
+            tipos.append("</Types>")
+            agregar("[Content_Types].xml", tipos.toString())
             agregar(
                 "_rels/.rels",
                 """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
@@ -67,67 +81,85 @@ $extra
 <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>
 </Relationships>""",
             )
+
+            // Libro: rId1 = estilos, rId2… = hojas
+            val listaHojas = StringBuilder()
+            val relsLibro = StringBuilder(
+                """<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>""",
+            )
+            hojas.forEachIndexed { i, h ->
+                listaHojas.append("""<sheet name="${escapar(nombreHoja(h.nombre))}" sheetId="${i + 1}" r:id="rId${i + 2}"/>""")
+                relsLibro.append("""<Relationship Id="rId${i + 2}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet${i + 1}.xml"/>""")
+            }
             agregar(
                 "xl/workbook.xml",
                 """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
-<sheets><sheet name="$HOJA_PRINCIPAL" sheetId="1" r:id="rId1"/></sheets>
+<sheets>$listaHojas</sheets>
 </workbook>""",
             )
             agregar(
                 "xl/_rels/workbook.xml.rels",
                 """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
-<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>
-<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>
-</Relationships>""",
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">$relsLibro</Relationships>""",
             )
             agregar("xl/styles.xml", estilos())
 
-            // Hoja
-            val sb = StringBuilder()
-            sb.append("""<?xml version="1.0" encoding="UTF-8" standalone="yes"?>""")
-            sb.append("""<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">""")
-            sb.append("""<sheetViews><sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>""")
-            sb.append("<cols>")
-            anchos.forEachIndexed { i, w -> sb.append("""<col min="${i + 1}" max="${i + 1}" width="$w" customWidth="1"/>""") }
-            sb.append("</cols><sheetData>")
-            fila(sb, 1, encabezado, S_ENCABEZADO)
-            val altoFila = (FOTO_ALTO_MAX + 2 * MARGEN_PX) * 0.75
-            filas.forEachIndexed { i, f ->
-                if (i in filasConFoto) fila(sb, i + 2, f, S_TEXTO_ARRIBA, altoFila) else fila(sb, i + 2, f, S_TEXTO)
-            }
-            sb.append("</sheetData>")
-            val ultima = columna(encabezado.size - 1) + (filas.size + 1)
-            sb.append("""<autoFilter ref="A1:$ultima"/>""")
-            if (hayFotos) sb.append("""<drawing r:id="rId1"/>""")
-            sb.append("</worksheet>")
-            agregar("xl/worksheets/sheet1.xml", sb.toString())
+            var numeroImagen = 0
+            hojas.forEachIndexed { i, h ->
+                val n = i + 1
+                val fotosOk = fotosPorHoja[i]
+                agregar("xl/worksheets/sheet$n.xml", hoja(h, fotosOk, seleccionada = i == 0))
+                if (fotosOk.isEmpty()) return@forEachIndexed
 
-            if (hayFotos) {
                 agregar(
-                    "xl/worksheets/_rels/sheet1.xml.rels",
+                    "xl/worksheets/_rels/sheet$n.xml.rels",
                     """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
-<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/drawing" Target="../drawings/drawing1.xml"/>
+<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/drawing" Target="../drawings/drawing$n.xml"/>
 </Relationships>""",
                 )
-                agregar("xl/drawings/drawing1.xml", dibujo(fotosOk))
+                agregar("xl/drawings/drawing$n.xml", dibujo(fotosOk))
                 val rels = StringBuilder(
                     """<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">""",
                 )
-                fotosOk.forEachIndexed { i, _ ->
-                    rels.append("""<Relationship Id="rId${i + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="../media/image${i + 1}.jpg"/>""")
-                }
-                rels.append("</Relationships>")
-                agregar("xl/drawings/_rels/drawing1.xml.rels", rels.toString())
-                fotosOk.forEachIndexed { i, f ->
-                    zip.putNextEntry(ZipEntry("xl/media/image${i + 1}.jpg"))
+                fotosOk.forEachIndexed { j, f ->
+                    numeroImagen++
+                    rels.append("""<Relationship Id="rId${j + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="../media/image$numeroImagen.jpg"/>""")
+                    zip.putNextEntry(ZipEntry("xl/media/image$numeroImagen.jpg"))
                     f.archivo.inputStream().use { it.copyTo(zip) }
                     zip.closeEntry()
                 }
+                rels.append("</Relationships>")
+                agregar("xl/drawings/_rels/drawing$n.xml.rels", rels.toString())
             }
         }
+    }
+
+    /** Excel no admite algunos caracteres en el nombre de una pestaña y lo limita a 31 letras. */
+    private fun nombreHoja(n: String) = n.replace(Regex("[\\\\/?*\\[\\]:]"), " ").take(31).ifBlank { "Hoja" }
+
+    private fun hoja(h: Hoja, fotosOk: List<FotoCelda>, seleccionada: Boolean): String {
+        val filasConFoto = fotosOk.map { it.fila }.toSet()
+        val sb = StringBuilder()
+        sb.append("""<?xml version="1.0" encoding="UTF-8" standalone="yes"?>""")
+        sb.append("""<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">""")
+        val sel = if (seleccionada) """ tabSelected="1"""" else ""
+        sb.append("""<sheetViews><sheetView$sel workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>""")
+        sb.append("<cols>")
+        h.anchos.forEachIndexed { i, w -> sb.append("""<col min="${i + 1}" max="${i + 1}" width="$w" customWidth="1"/>""") }
+        sb.append("</cols><sheetData>")
+        fila(sb, 1, h.encabezado, S_ENCABEZADO)
+        val altoFila = (FOTO_ALTO_MAX + 2 * MARGEN_PX) * 0.75
+        h.filas.forEachIndexed { i, f ->
+            if (i in filasConFoto) fila(sb, i + 2, f, S_TEXTO_ARRIBA, altoFila) else fila(sb, i + 2, f, S_TEXTO)
+        }
+        sb.append("</sheetData>")
+        val ultima = columna(h.encabezado.size - 1) + (h.filas.size + 1)
+        sb.append("""<autoFilter ref="A1:$ultima"/>""")
+        if (fotosOk.isNotEmpty()) sb.append("""<drawing r:id="rId1"/>""")
+        sb.append("</worksheet>")
+        return sb.toString()
     }
 
     private fun estilos() = """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
