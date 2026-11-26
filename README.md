@@ -50,3 +50,13 @@ de la empresa, el navegador queda en «Mi unidad» del Drive, donde se busca, se
 Cada foto que se saca en la app (modelo, serie, notas, estado del POS) se guarda achicada en el teléfono y va al Excel
 en la hoja **Fotos**, con su caja, campo y valor. En la hoja principal, la columna **Fotos** enlaza a las fotos de cada caja.
 Al **cargar** un Excel exportado por la app, las fotos vuelven a la app.
+
+## Versión web (iPhone y cualquier teléfono)
+
+La carpeta `web/` tiene la misma app (Inventario, OT trabajos y Drive) como página web instalable.
+Se publica sola en GitHub Pages con `.github/workflows/web.yml`:
+https://aikus0788.github.io/escaner-inventario/
+
+- iPhone: abrir en Safari → Compartir → «Agregar a pantalla de inicio».
+- Página de descarga que detecta Android o iPhone: https://aikus0788.github.io/escaner-inventario/descargar.html
+- Todo queda guardado en el teléfono; las librerías (lectura de códigos y texto, PDF, Excel) van incluidas para funcionar sin internet.

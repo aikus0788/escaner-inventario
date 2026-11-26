@@ -1,0 +1,137 @@
+// PDF de la «Orden de trabajo» NCR Voyix, con las mismas medidas que la app de Android.
+const ANCHO = 595.32;
+const ALTO = 841.92;
+
+const LINEAS = [
+  [214.32, 70.68, 216.24, 94.8], [214.8, 94.8, 215.76, 261.72], [214.8, 287.76, 215.76, 309.96], [279.24, 287.76, 280.2, 309.96],
+  [355.8, 287.76, 356.76, 309.96], [432.36, 287.76, 433.32, 309.96], [214.8, 311.88, 215.76, 527.04], [49.92, 68.76, 51.84, 743.28],
+  [214.8, 528.96, 215.76, 644.88], [537.48, 70.68, 539.4, 743.28], [279.24, 311.88, 280.2, 527.04], [355.8, 311.88, 356.76, 527.04],
+  [432.36, 311.88, 433.32, 527.04], [51.84, 68.76, 539.4, 70.68], [51.84, 92.88, 539.4, 94.8], [51.84, 117.48, 537.48, 118.44],
+  [51.84, 141.6, 537.48, 142.56], [51.84, 165.72, 537.48, 166.68], [51.84, 189.84, 537.48, 190.8], [51.84, 213.96, 537.48, 214.92],
+  [51.84, 238.08, 537.48, 239.04], [51.84, 261.72, 539.4, 263.64], [51.84, 285.84, 539.4, 287.76], [51.84, 309.96, 539.4, 311.88],
+  [51.84, 334.56, 537.48, 335.52], [51.84, 358.68, 537.48, 359.64], [51.84, 382.8, 537.48, 383.76], [51.84, 406.92, 537.48, 407.88],
+  [51.84, 431.04, 537.48, 432.0], [51.84, 455.16, 537.48, 456.12], [51.84, 479.28, 537.48, 480.24], [51.84, 503.4, 537.48, 504.36],
+  [51.84, 527.04, 539.4, 528.96], [51.84, 597.12, 537.48, 598.08], [51.84, 621.24, 537.48, 622.2], [51.84, 644.88, 539.4, 646.8],
+  [51.84, 741.36, 539.4, 743.28],
+];
+const FILAS_DATOS = [117.48, 141.6, 165.72, 189.84, 213.96, 238.08, 261.72];
+const ETIQUETAS = ['Numero de orden', 'Fecha', 'Cliente', 'Local', 'Direccion', 'Nombre tecnico', 'Estado actividad'];
+const FILAS_DETALLE = [334.56, 358.68, 382.8, 406.92, 431.04, 455.16, 479.28, 503.4, 527.04];
+const COLUMNAS = [[51.84, 214.8], [215.76, 279.24], [280.2, 355.8], [356.76, 432.36], [433.32, 537.48]];
+const TITULOS = ['Tipo Actividad', '# Equipos', 'Modelo', 'Tipo equipo', 'Serie'];
+const X_DATOS = 219.5;
+const X_FIN = 534.5;
+export const MAX_LINEAS = 9;
+
+/** Deja solo caracteres que la fuente estándar del PDF puede escribir. */
+const limpiar = (s) => (s || '').replace(/[‘’]/g, "'").replace(/[“”]/g, '"').replace(/[–—]/g, '-')
+  .replace(/[^\x20-\x7E -ÿ…]/g, '');
+
+/**
+ * ot: { numero, fecha, cliente, local, direccion, tecnico, estado, lineas:[{tipoActividad,cantidad,modelo,tipoEquipo,serie}],
+ *       observaciones, recibeNombre, recibeCargo }
+ * firmaPng: bytes PNG (fondo blanco) o null. logoJpg: bytes del logo NCR Voyix.
+ */
+export async function crearPdfOt(ot, firmaPng, logoJpg) {
+  const { PDFDocument, StandardFonts, rgb } = window.PDFLib;
+  const doc = await PDFDocument.create();
+  doc.setTitle(`Orden de trabajo ${ot.numero || ''}`.trim());
+  doc.setProducer('Infomaxis');
+  const p = doc.addPage([ANCHO, ALTO]);
+  const normal = await doc.embedFont(StandardFonts.Helvetica);
+  const negrita = await doc.embedFont(StandardFonts.HelveticaBold);
+  const VERDE = rgb(36 / 255, 148 / 255, 95 / 255);
+  const AZUL = rgb(15 / 255, 30 / 255, 90 / 255);
+  const NEGRO = rgb(0, 0, 0);
+  const y = (top) => ALTO - top;
+
+  // Logo y título
+  if (logoJpg) {
+    const img = await doc.embedJpg(logoJpg);
+    p.drawImage(img, { x: 50.4, y: y(47.0), width: 161.2, height: 25.4 });
+  }
+  const texto = (t, x, base, { centro = false, max = 300, fuente = normal, color = NEGRO, tam = 11 } = {}) => {
+    t = limpiar(t);
+    let s = tam;
+    while (fuente.widthOfTextAtSize(t, s) > max && s > 7) s -= 0.25;
+    const w = fuente.widthOfTextAtSize(t, s);
+    p.drawText(t, { x: centro ? x - w / 2 : x, y: y(base), size: s, font: fuente, color });
+  };
+  const dato = (v, x, base, max, centro = false) => {
+    let t = limpiar(String(v || '').replace(/\n/g, ' ').trim());
+    if (!t) return;
+    let s = 10;
+    while (normal.widthOfTextAtSize(t, s) > max && s > 6.5) s -= 0.25;
+    if (normal.widthOfTextAtSize(t, s) > max) {
+      while (t.length > 1 && normal.widthOfTextAtSize(t + '…', s) > max) t = t.slice(0, -1);
+      t += '…';
+    }
+    const w = normal.widthOfTextAtSize(t, s);
+    p.drawText(t, { x: centro ? x - w / 2 : x, y: y(base), size: s, font: normal, color: AZUL });
+  };
+
+  texto('ORDEN DE TRABAJO', 297.6, 61.5, { centro: true, max: 595 });
+  for (const [x0, t0, x1, t1] of LINEAS) p.drawRectangle({ x: x0, y: y(t1), width: x1 - x0, height: t1 - t0, color: NEGRO });
+
+  texto('SEGUIMIENTO NCR EXTERNAL', 52.8, 89.6, { max: 160, fuente: negrita, color: VERDE });
+  texto('DATOS A COMPLETAR', 376.6, 89.6, { centro: true, fuente: negrita, color: VERDE });
+  ETIQUETAS.forEach((e, i) => texto(e, 52.8, FILAS_DATOS[i] - 2.9, { max: 160 }));
+  texto('Detalle de actividad', 294.7, 282.6, { centro: true, max: 480, fuente: negrita, color: VERDE });
+  COLUMNAS.forEach(([a, b], i) => texto(TITULOS[i], (a + b) / 2, 306.6, { centro: true, max: b - a - 4, fuente: negrita, color: VERDE }));
+  texto('Observaciones', 52.8, 566.8, { max: 160 });
+  texto('Nombre quien recibe', 52.8, 618.3, { max: 160 });
+  texto('Cargo quien recibe', 52.8, 641.5, { max: 160 });
+  texto('Firma cliente', 294.7, 739.0, { centro: true });
+  texto('Preparado por Infomaxis', 51.4, 815.7);
+
+  [ot.numero, ot.fecha, ot.cliente, ot.local, ot.direccion, ot.tecnico, ot.estado]
+    .forEach((v, i) => dato(v, X_DATOS, FILAS_DATOS[i] - 2.9, X_FIN - X_DATOS));
+
+  (ot.lineas || []).filter((l) => Object.values(l).some((v) => String(v || '').trim())).slice(0, MAX_LINEAS).forEach((l, i) => {
+    const base = FILAS_DETALLE[i] - 7.2;
+    [l.tipoActividad, l.cantidad, l.modelo, l.tipoEquipo, l.serie].forEach((v, j) => {
+      const [a, b] = COLUMNAS[j];
+      if (j === 1) dato(v, (a + b) / 2, base, b - a - 6, true);
+      else dato(v, a + 3.5, base, b - a - 7);
+    });
+  });
+
+  // Observaciones en varias líneas, achicando hasta que quepan.
+  const obs = limpiar((ot.observaciones || '').trim());
+  if (obs) {
+    const ancho = X_FIN - X_DATOS;
+    const alto = 595.5 - 531.5;
+    let s = 10;
+    let lineas;
+    for (;;) {
+      lineas = [];
+      for (const parrafo of obs.split('\n')) {
+        let actual = '';
+        for (const palabra of parrafo.split(/\s+/)) {
+          const prueba = actual ? `${actual} ${palabra}` : palabra;
+          if (normal.widthOfTextAtSize(prueba, s) <= ancho || !actual) actual = prueba;
+          else { lineas.push(actual); actual = palabra; }
+        }
+        lineas.push(actual);
+      }
+      if (lineas.length * s * 1.15 <= alto || s <= 6.5) break;
+      s -= 0.5;
+    }
+    lineas.forEach((l, i) => {
+      const base = 531.5 + s + i * s * 1.15;
+      if (base <= 596) p.drawText(l, { x: X_DATOS, y: y(base), size: s, font: normal, color: AZUL });
+    });
+  }
+  dato(ot.recibeNombre, X_DATOS, 618.3, X_FIN - X_DATOS);
+  dato(ot.recibeCargo, X_DATOS, 641.5, X_FIN - X_DATOS);
+
+  if (firmaPng) {
+    const f = await doc.embedPng(firmaPng);
+    const [cx0, ct0, cx1, ct1] = [130, 650, 460, 727];
+    const e = Math.min((cx1 - cx0) / f.width, (ct1 - ct0) / f.height);
+    const w = f.width * e;
+    const h = f.height * e;
+    p.drawImage(f, { x: (cx0 + cx1) / 2 - w / 2, y: y(ct1), width: w, height: h });
+  }
+  return doc.save();
+}

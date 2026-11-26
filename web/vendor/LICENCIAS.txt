@@ -1,0 +1,6 @@
+Librerías incluidas (sin cambios):
+- @zxing/library 0.23.0 (Apache-2.0) — lectura de códigos de barras
+- tesseract.js 7.0.0 y tesseract.js-core 7.0.0 (Apache-2.0) — lectura de texto
+- @tesseract.js-data/eng 1.0.0 (4.0.0_best_int, Apache-2.0) — datos de idioma
+- pdf-lib 1.17.1 (MIT) — creación del PDF de la OT
+- fflate 0.8.3 (MIT) — archivos .xlsx (zip)

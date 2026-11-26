@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Descargar Infomaxis</title>
+<meta name="description" content="Instala la app Infomaxis en Android o iPhone.">
+<meta name="theme-color" content="#0832D6">
+<link rel="icon" type="image/png" href="img/icono-192.png">
+<link rel="apple-touch-icon" href="img/apple-touch-icon.png">
+<style>
+  :root { --azul:#0832D6; --naranja:#F0960A; --tinta:#1B1F2A; --gris:#5C6170; --fondo:#F1F2F6; --linea:#D6D9E2; color-scheme: light; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--fondo); color:var(--tinta); font:16px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif; }
+  header { background:#fff; text-align:center; padding:28px 16px 18px; }
+  header img { height:96px; max-width:100%; }
+  header h1 { margin:10px 0 0; color:var(--azul); font-size:26px; }
+  .franja { height:4px; background:linear-gradient(90deg,#F06414,var(--naranja)); }
+  main { max-width:560px; margin:0 auto; padding:18px 16px 40px; display:flex; flex-direction:column; gap:14px; }
+  .tarjeta { background:#fff; border:1px solid var(--linea); border-radius:14px; padding:18px; }
+  .tarjeta.tuya { border:2px solid var(--azul); }
+  .tarjeta h2 { margin:0 0 4px; font-size:20px; }
+  .tarjeta .tag { display:inline-block; background:var(--naranja); color:var(--tinta); font-size:12px; font-weight:700; border-radius:10px; padding:2px 8px; margin-bottom:8px; }
+  ol { margin:10px 0 14px; padding-left:22px; color:var(--gris); }
+  li { margin:4px 0; }
+  .boton { display:flex; align-items:center; justify-content:center; min-height:54px; border-radius:10px; background:var(--azul); color:#fff; font-weight:800; text-decoration:none; font-size:16px; }
+  .boton.claro { background:#fff; color:var(--azul); border:1.5px solid var(--azul); }
+  .boton:focus-visible { outline:3px solid var(--naranja); outline-offset:2px; }
+  p.nota { color:var(--gris); font-size:13px; text-align:center; margin:4px 0 0; }
+</style>
+</head>
+<body>
+<header><img src="img/logo_infomaxis.png" alt="Logo Infomaxis"><h1>Descargar Infomaxis</h1></header>
+<div class="franja"></div>
+<main>
+  <section class="tarjeta" id="android">
+    <span class="tag" hidden>Tu teléfono</span>
+    <h2>Android</h2>
+    <ol>
+      <li>Toca «Descargar app para Android».</li>
+      <li>Abre el archivo <b>Infomaxis.apk</b> descargado.</li>
+      <li>Si Android lo pide, permite «Instalar apps de origen desconocido» y toca <b>Instalar</b>.</li>
+    </ol>
+    <a class="boton" href="https://github.com/aikus0788/escaner-inventario/releases/latest/download/Infomaxis.apk">Descargar app para Android</a>
+  </section>
+  <section class="tarjeta" id="iphone">
+    <span class="tag" hidden>Tu teléfono</span>
+    <h2>iPhone</h2>
+    <ol>
+      <li>Abre este enlace en <b>Safari</b>.</li>
+      <li>Toca «Abrir Infomaxis».</li>
+      <li>Toca el botón <b>Compartir</b> (cuadro con flecha hacia arriba) y luego <b>«Agregar a pantalla de inicio»</b>.</li>
+      <li>Abre Infomaxis desde el ícono nuevo en tu pantalla.</li>
+    </ol>
+    <a class="boton" href="./#inicio">Abrir Infomaxis</a>
+  </section>
+  <p class="nota">También funciona en el computador: usa «Abrir Infomaxis».</p>
+</main>
+<script>
+  // Muestra primero la opción del teléfono que abrió el enlace.
+  const ua = navigator.userAgent;
+  const iphone = /iPhone|iPad|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  const android = /Android/i.test(ua);
+  const tuya = iphone ? 'iphone' : android ? 'android' : null;
+  if (tuya) {
+    const s = document.getElementById(tuya);
+    s.classList.add('tuya');
+    s.querySelector('.tag').hidden = false;
+    s.parentNode.prepend(s);
+    if (iphone) document.querySelector('#android .boton').classList.add('claro');
+    else document.querySelector('#iphone .boton').classList.add('claro');
+  }
+</script>
+</body>
+</html>
