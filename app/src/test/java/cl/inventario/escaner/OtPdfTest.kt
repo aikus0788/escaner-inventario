@@ -97,5 +97,19 @@ class OtPdfTest {
         // «Otros» usa lo escrito; el resto, el tipo elegido.
         org.junit.Assert.assertEquals("Cambio de cerradura", ot.lineas[6].actividadParaPdf)
         org.junit.Assert.assertEquals("Reposicionamiento", ot.lineas[5].actividadParaPdf)
+
+        // OT IMX: página 1 y página de imágenes
+        val logoImx = BitmapFactory.decodeResource(ctx.resources, R.drawable.logo_imx)
+        assertNotNull(logoImx)
+        fun lienzo() = Bitmap.createBitmap(1190, 1684, Bitmap.Config.ARGB_8888)
+        val imx = lienzo()
+        Canvas(imx).apply { scale(2f, 2f) }.let { OtPdfImx.dibujar(it, ot.copy(numero = "IMX-00125"), firmaDePrueba(), logoImx, 2) }
+        File("build/ot-preview-imx.png").outputStream().use { imx.compress(Bitmap.CompressFormat.PNG, 100, it) }
+        val imxImg = lienzo()
+        Canvas(imxImg).apply { scale(2f, 2f) }.let { OtPdfImx.dibujarImagenes(it, ot.copy(numero = "IMX-00125"), fotos, 0, 2, logoImx, 2, 2) }
+        File("build/ot-preview-imx-imagenes.png").outputStream().use { imxImg.compress(Bitmap.CompressFormat.PNG, 100, it) }
+        val imxOtro = lienzo()
+        Canvas(imxOtro).apply { scale(2f, 2f) }.let { OtPdfImx.dibujar(it, ot.copy(estado = "En espera de repuesto"), null, logoImx) }
+        File("build/ot-preview-imx-otro.png").outputStream().use { imxOtro.compress(Bitmap.CompressFormat.PNG, 100, it) }
     }
 }

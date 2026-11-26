@@ -30,7 +30,7 @@ import java.util.Calendar
 import java.util.Date
 import java.util.Locale
 
-/** Módulo OT trabajos: se llena la orden de trabajo NCR Voyix y se genera el PDF. */
+/** Módulo OT trabajos: se llena la orden de trabajo (NCR Voyix o IMX) y se genera el PDF. */
 class OtActivity : AppCompatActivity() {
 
     private lateinit var b: ActivityOtBinding
@@ -97,6 +97,7 @@ class OtActivity : AppCompatActivity() {
             if (l >= 0) objetivo = l to it.getBoolean("objSerie")
             tipoOt = it.getString("tipoOt", "")
         }
+        if (tipoOt.isNotEmpty()) b.txtTipoOt.post { fijarTipoOt(tipoOt) }
 
         b.btnVolver.setOnClickListener { finish() }
         b.btnNueva.setOnClickListener { confirmarNueva() }
@@ -126,31 +127,18 @@ class OtActivity : AppCompatActivity() {
     // ---------------- Tipo de OT ----------------
 
     private fun elegirTipoOt(obligatorio: Boolean) {
-        val opciones = arrayOf("OT NCR Voyix", "OT Bartech (próximamente)")
+        val opciones = arrayOf("OT NCR Voyix", "OT IMX")
         val d = MaterialAlertDialogBuilder(this)
             .setTitle("¿Qué orden de trabajo vas a llenar?")
-            .setItems(opciones) { _, i ->
-                if (i == 0) {
-                    tipoOt = TIPO_NCR
-                    b.txtTipoOt.text = "OT NCR Voyix ▾"
-                } else {
-                    MaterialAlertDialogBuilder(this)
-                        .setTitle("OT Bartech")
-                        .setMessage("El formato de la OT Bartech estará disponible en una próxima actualización.")
-                        .setPositiveButton("Usar OT NCR") { _, _ ->
-                            tipoOt = TIPO_NCR
-                            b.txtTipoOt.text = "OT NCR Voyix ▾"
-                        }
-                        .setNegativeButton(if (obligatorio && tipoOt.isEmpty()) "Volver al inicio" else "Cancelar") { _, _ ->
-                            if (tipoOt.isEmpty()) finish()
-                        }
-                        .setCancelable(false)
-                        .show()
-                }
-            }
+            .setItems(opciones) { _, i -> fijarTipoOt(if (i == 0) TIPO_NCR else TIPO_IMX) }
             .setCancelable(!obligatorio)
         if (obligatorio) d.setNegativeButton("Volver al inicio") { _, _ -> finish() } else d.setNegativeButton("Cancelar", null)
         d.show()
+    }
+
+    private fun fijarTipoOt(tipo: String) {
+        tipoOt = tipo
+        b.txtTipoOt.text = if (tipo == TIPO_IMX) "OT IMX ▾" else "OT NCR Voyix ▾"
     }
 
     // ---------------- Imágenes ----------------
@@ -547,7 +535,7 @@ class OtActivity : AppCompatActivity() {
     }
 
     private fun nombrePdf(ot: OrdenTrabajo): String {
-        val partes = listOf("OT", ot.numero, ot.local, ot.fecha).filter { it.isNotBlank() }
+        val partes = listOf(if (tipoOt == TIPO_IMX) "OT-IMX" else "OT", ot.numero, ot.local, ot.fecha).filter { it.isNotBlank() }
         return partes.joinToString("_").replace(Regex("[^A-Za-z0-9ÁÉÍÓÚáéíóúÑñ_-]+"), "-") + ".pdf"
     }
 
@@ -559,7 +547,11 @@ class OtActivity : AppCompatActivity() {
         val archivo = File(carpeta, nombrePdf(ot))
         Thread {
             val archivosImg = ot.imagenes.map { File(carpetaImagenes(), it) }
-            val error = try { OtPdf.generar(this, ot, firma, archivo, archivosImg); null } catch (e: Exception) { e.message ?: "error" }
+            val error = try { 
+                if (tipoOt == TIPO_IMX) OtPdfImx.generar(this, ot, firma, archivo, archivosImg)
+                else OtPdf.generar(this, ot, firma, archivo, archivosImg)
+                null
+            } catch (e: Exception) { e.message ?: "error" }
             runOnUiThread {
                 if (error != null) {
                     aviso("No se pudo crear el PDF: $error")
@@ -625,6 +617,7 @@ class OtActivity : AppCompatActivity() {
 
     companion object {
         const val TIPO_NCR = "NCR"
+        const val TIPO_IMX = "IMX"
         val CLIENTES = listOf(
             "Paris", "Easy", "Jumbo", "Santa Isabel", "Spid", "Lider", "Acuenta",
             "Mayorista", "Falabella", "Tottus", "Sodimac",
