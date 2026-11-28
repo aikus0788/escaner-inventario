@@ -16,6 +16,7 @@
 
         <activity
             android:name=".HomeActivity"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|uiMode"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
@@ -26,6 +27,7 @@
         <!-- Módulo: Inventario equipos -->
         <activity
             android:name=".MainActivity"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|uiMode"
             android:exported="false"
             android:label="Inventario equipos"
             android:parentActivityName=".HomeActivity"
@@ -34,6 +36,7 @@
         <!-- Módulo: OT trabajos -->
         <activity
             android:name=".OtActivity"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|uiMode"
             android:exported="false"
             android:label="OT trabajos"
             android:parentActivityName=".HomeActivity"
@@ -42,6 +45,7 @@
         <!-- Editor para marcar y comentar imágenes de la OT -->
         <activity
             android:name=".MarcarImagenActivity"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|uiMode"
             android:exported="false"
             android:label="Marcar imagen"
             android:windowSoftInputMode="adjustResize" />
@@ -49,6 +53,7 @@
         <!-- Módulo: Drive -->
         <activity
             android:name=".DriveActivity"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|uiMode"
             android:exported="false"
             android:label="Drive"
             android:parentActivityName=".HomeActivity"

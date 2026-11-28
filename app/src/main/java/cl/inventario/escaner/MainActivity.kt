@@ -190,6 +190,26 @@ class MainActivity : AppCompatActivity() {
         b.btnFotosSeries.setOnClickListener { menuFotosSeries() }
         b.btnVolver.setOnClickListener { finish() }
 
+        // Volver a poner lo que se estaba llenando si Android recreó la pantalla.
+        savedInstanceState?.let { st ->
+            val piezas = mutableMapOf<String, Pieza>()
+            try {
+                val o = org.json.JSONObject(st.getString("piezasForm") ?: "{}")
+                for (k in o.keys()) o.getJSONObject(k).let { p -> piezas[k] = Pieza(p.optString("modelo"), p.optString("serie")) }
+            } catch (_: Exception) {
+            }
+            if (st.containsKey("editandoId")) {
+                editandoId = st.getLong("editandoId")
+                b.btnGuardar.text = "GUARDAR CAMBIOS"
+                b.barEdicion.visibility = View.VISIBLE
+            }
+            val t = st.getString("tipoForm").orEmpty()
+            if (t.isNotEmpty() || piezas.isNotEmpty()) ponerTipo(t, piezas)
+            mostrarTrabajo()
+            construirFotos()
+            actualizarVistaFotos()
+        }
+
         refrescar()
     }
 
@@ -200,6 +220,12 @@ class MainActivity : AppCompatActivity() {
         outState.putSerializable("fotosForm", HashMap(fotosForm))
         outState.putSerializable("fotosSeriesForm", HashMap(fotosSeriesForm))
         outState.putString("trabajo", trabajo)
+        // Lo escrito en los componentes (si Android cierra la pantalla, por ejemplo al abrir la cámara).
+        val piezas = org.json.JSONObject()
+        leerPiezas().filterValues { !it.vacia() }.forEach { (k, v) -> piezas.put(k, org.json.JSONObject().put("modelo", v.modelo).put("serie", v.serie)) }
+        outState.putString("piezasForm", piezas.toString())
+        outState.putString("tipoForm", tipoActual())
+        editandoId?.let { outState.putLong("editandoId", it) }
     }
 
     private fun nuevoChip(texto: String) = Chip(this).apply {
@@ -329,6 +355,9 @@ class MainActivity : AppCompatActivity() {
                 v.findViewById(R.id.stModelo),
                 v.findViewById(R.id.stSerie),
             )
+            // Todos los componentes comparten los mismos ids: Android no debe restaurarlos solo (los mezclaría).
+            ui.modelo.isSaveEnabled = false
+            ui.serie.isSaveEnabled = false
             valores[nombre]?.let {
                 ui.modelo.setText(it.modelo)
                 ui.serie.setText(it.serie)
@@ -790,8 +819,10 @@ class MainActivity : AppCompatActivity() {
                     ?: throw XlsxReader.FormatoNoValido("No se pudo abrir el archivo.")
                 // Las fotos que venían en el Excel vuelven a quedar guardadas en el teléfono.
                 val cajas = leidas.map { l ->
-                    if (l.fotos.isEmpty()) l.caja
-                    else l.caja.copy(fotos = l.fotos.mapValues { (_, bytes) -> Fotos.guardarBytes(this, bytes) })
+                    l.caja.copy(
+                        fotos = l.fotos.mapValues { (_, bytes) -> Fotos.guardarBytes(this, bytes) },
+                        fotosSeries = l.fotosSeries.mapValues { (_, bytes) -> Fotos.guardarBytes(this, bytes) },
+                    )
                 }
                 Result.success(cajas)
             } catch (e: Exception) {

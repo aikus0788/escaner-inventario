@@ -47,11 +47,11 @@ class ExcelFotosTest {
 
         val hojas = ExcelInventario.hojas(cajas) { File(dir, it) }
         assertEquals(listOf(Caja.RETIRO, Caja.INSTALACION), hojas.map { it.nombre })
-        assertEquals(4, hojas[0].fotos.size)
+        assertEquals(5, hojas[0].fotos.size)
         assertEquals(1, hojas[1].fotos.size)
-        assertEquals(listOf("Foto: Cómo quedó el equipo", "Foto: Dónde quedó el equipo", "Foto: Adicional", "Foto: Serie del POS"),
-            hojas[0].encabezado.takeLast(4))
-        assertEquals(Caja.PRIMERA_COLUMNA_FOTO + 4, hojas[0].encabezado.size)
+        assertEquals(listOf("Foto: Cómo quedó el equipo", "Foto: Dónde quedó el equipo", "Foto: Adicional", "Foto: Serie del POS", "Foto serie: POS/SSCO"),
+            hojas[0].encabezado.takeLast(5))
+        assertEquals(Caja.PRIMERA_COLUMNA_FOTO + 5, hojas[0].encabezado.size)
         assertEquals(Caja.PRIMERA_COLUMNA_FOTO + 5, hojas[1].encabezado.size)
 
         val salida = File("build/prueba-fotos.xlsx")
@@ -73,6 +73,10 @@ class ExcelFotosTest {
         assertArrayEquals(f1.readBytes(), leidas[0].fotos.getValue("foto_equipo"))
         assertArrayEquals(f2.readBytes(), leidas[0].fotos.getValue("foto_lugar"))
         assertArrayEquals(f4.readBytes(), leidas[2].fotos.getValue("foto_serie"))
+        // La foto de la serie del componente vuelve a su lugar al cargar el Excel.
+        assertEquals(setOf("${Caja.PRINCIPAL}|serie"), leidas[2].fotosSeries.keys)
+        assertArrayEquals(f1.readBytes(), leidas[2].fotosSeries.getValue("${Caja.PRINCIPAL}|serie"))
+        assertEquals(0, leidas[0].fotosSeries.size)
         assertArrayEquals(f4.readBytes(), leidas[3].fotos.getValue("foto_adicional"))
 
         // Sin fotos el Excel sigue siendo de una sola hoja y se puede leer.

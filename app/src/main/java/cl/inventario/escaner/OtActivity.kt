@@ -149,7 +149,10 @@ class OtActivity : AppCompatActivity() {
         val opciones = arrayOf("OT NCR Voyix", "OT IMX")
         val d = MaterialAlertDialogBuilder(this)
             .setTitle("¿Qué orden de trabajo vas a llenar?")
-            .setItems(opciones) { _, i -> fijarTipoOt(if (i == 0) TIPO_NCR else TIPO_IMX) }
+            .setItems(opciones) { _, i ->
+                fijarTipoOt(if (i == 0) TIPO_NCR else TIPO_IMX)
+                if (obligatorio) llenarDesdeInventarioSiVacio()
+            }
             .setCancelable(!obligatorio)
         if (obligatorio) d.setNegativeButton("Volver al inicio") { _, _ -> finish() } else d.setNegativeButton("Cancelar", null)
         d.show()
@@ -392,6 +395,8 @@ class OtActivity : AppCompatActivity() {
             v.findViewById(R.id.edtTipoEquipo), v.findViewById(R.id.edtSerie), v.findViewById(R.id.txtLectura),
             v.findViewById(R.id.edtActividadOtra), v.findViewById(R.id.boxActividadOtra),
         )
+        // Las líneas comparten ids: Android no debe restaurarlas solo (se cargan desde el borrador guardado).
+        listOf(ui.tipoActividad, ui.cantidad, ui.modelo, ui.tipoEquipo, ui.serie, ui.actividadOtra).forEach { it.isSaveEnabled = false }
         ui.tipoActividad.setAdapter(BuscadorLista(this, OrdenTrabajo.TIPOS_ACTIVIDAD))
         ui.tipoEquipo.setAdapter(BuscadorLista(this, OrdenTrabajo.TIPOS_EQUIPO))
         mostrarListaAlTocar(ui.tipoActividad)
@@ -442,37 +447,43 @@ class OtActivity : AppCompatActivity() {
     /** Llena el detalle con los equipos registrados en el módulo de inventario. */
     private fun copiarDesdeInventario() {
         val cajas = Almacen(this).cargar()
-        val nuevas = mutableListOf<LineaOt>()
-        for (c in cajas) {
-            for (comp in Caja.POR_TIPO[c.tipo] ?: Caja.COMPONENTES) {
-                val p = c.piezas[comp] ?: continue
-                if (p.vacia()) continue
-                nuevas.add(LineaOt(c.trabajo, "1", p.modelo, Caja.etiqueta(comp, c.tipo), p.serie))
-            }
-        }
+        val nuevas = lineasDesdeInventario(cajas)
         if (nuevas.isEmpty()) {
             aviso("El inventario no tiene equipos registrados.")
             return
         }
         val extra = if (nuevas.size > OrdenTrabajo.MAX_LINEAS) {
-            "\n\nHay ${nuevas.size} equipos y la OT tiene ${OrdenTrabajo.MAX_LINEAS} líneas: se copian los primeros ${OrdenTrabajo.MAX_LINEAS}."
+            "\n\nSon ${nuevas.size} líneas y la OT tiene ${OrdenTrabajo.MAX_LINEAS}: se copian las primeras ${OrdenTrabajo.MAX_LINEAS}."
         } else ""
         MaterialAlertDialogBuilder(this)
             .setTitle("Copiar desde Inventario")
-            .setMessage("Se reemplazará el detalle actual por ${minOf(nuevas.size, OrdenTrabajo.MAX_LINEAS)} equipos del inventario.$extra")
-            .setPositiveButton("Copiar") { _, _ ->
-                b.contenedorLineas.removeAllViews()
-                lineas.clear()
-                nuevas.take(OrdenTrabajo.MAX_LINEAS).forEach { agregarLinea(it, enfocar = false) }
-                cajas.firstOrNull()?.let { c ->
-                    if (b.edtCliente.texto().isEmpty()) b.edtCliente.setText(c.cliente, false)
-                    if (b.edtLocal.texto().isEmpty()) b.edtLocal.setText(c.tienda)
-                    if (b.edtDireccion.texto().isEmpty()) b.edtDireccion.setText(c.direccion)
-                }
-                aviso("Equipos copiados. Revisa y completa lo que falte.")
-            }
+            .setMessage("Se reemplazará el detalle actual por ${minOf(nuevas.size, OrdenTrabajo.MAX_LINEAS)} líneas con la cantidad de equipos por modelo.$extra")
+            .setPositiveButton("Copiar") { _, _ -> ponerLineasInventario(cajas, nuevas) }
             .setNegativeButton("Cancelar", null)
             .show()
+    }
+
+    private fun ponerLineasInventario(cajas: List<Caja>, nuevas: List<LineaOt>) {
+        b.contenedorLineas.removeAllViews()
+        lineas.clear()
+        nuevas.take(OrdenTrabajo.MAX_LINEAS).forEach { agregarLinea(it, enfocar = false) }
+        cajas.firstOrNull()?.let { c ->
+            if (b.edtCliente.texto().isEmpty()) b.edtCliente.setText(c.cliente, false)
+            if (b.edtLocal.texto().isEmpty()) b.edtLocal.setText(c.tienda)
+            if (b.edtDireccion.texto().isEmpty()) b.edtDireccion.setText(c.direccion)
+        }
+        almacen.guardar(leer())
+        val n = nuevas.sumOf { it.cantidad.toIntOrNull() ?: 0 }
+        aviso("Detalle llenado desde el Inventario: $n equipos en ${minOf(nuevas.size, OrdenTrabajo.MAX_LINEAS)} líneas. Revisa y completa lo que falte.")
+    }
+
+    /** Al entrar: si el detalle está vacío y hay equipos en el Inventario, se llena solo (modo conteo). */
+    private fun llenarDesdeInventarioSiVacio() {
+        // Una línea con solo la cantidad «1» (la que trae la OT nueva) cuenta como vacía.
+        if (leer().lineas.any { l -> listOf(l.tipoActividad, l.modelo, l.tipoEquipo, l.serie, l.actividadOtra).any { it.isNotBlank() } }) return
+        val cajas = Almacen(this).cargar()
+        val nuevas = lineasDesdeInventario(cajas)
+        if (nuevas.isNotEmpty()) ponerLineasInventario(cajas, nuevas)
     }
 
     // ---------------- Cámara ----------------

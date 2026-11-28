@@ -57,6 +57,31 @@ data class OrdenTrabajo(
     }
 }
 
+/**
+ * Detalle de la OT en modo conteo desde el Inventario: una línea por trabajo, tipo de equipo y modelo,
+ * con la cantidad de equipos. La serie solo se escribe cuando es 1 equipo.
+ * Ej.: 5 POS TCx700 retirados → «Retiro · 5 · TCx700 · POS · (sin serie)».
+ */
+fun lineasDesdeInventario(cajas: List<Caja>): List<LineaOt> {
+    data class Grupo(val trabajo: String, val equipo: String, val modelo: String, val orden: Int, val series: MutableList<String>)
+    val grupos = linkedMapOf<String, Grupo>()
+    for (c in cajas) {
+        for (comp in Caja.POR_TIPO[c.tipo] ?: Caja.COMPONENTES) {
+            val p = c.piezas[comp] ?: continue
+            if (p.vacia()) continue
+            val equipo = Caja.etiqueta(comp, c.tipo)
+            val k = listOf(c.trabajo, equipo, p.modelo.trim()).joinToString("|") { it.lowercase() }
+            val g = grupos.getOrPut(k) {
+                Grupo(c.trabajo, equipo, p.modelo.trim(), Caja.COMPONENTES.indexOf(comp).let { if (it < 0) 99 else it }, mutableListOf())
+            }
+            g.series.add(p.serie.trim())
+        }
+    }
+    val ordenTrabajo = { t: String -> when (t) { Caja.RETIRO -> 0; Caja.INSTALACION -> 1; else -> 2 } }
+    return grupos.values.sortedWith(compareBy({ ordenTrabajo(it.trabajo) }, { it.orden }))
+        .map { g -> LineaOt(g.trabajo, g.series.size.toString(), g.modelo, g.equipo, if (g.series.size == 1) g.series[0] else "") }
+}
+
 /** Guarda en el teléfono la OT que se está llenando, para no perderla si se cierra la app. */
 class AlmacenOt(context: Context) {
     private val prefs = context.getSharedPreferences("ot", Context.MODE_PRIVATE)

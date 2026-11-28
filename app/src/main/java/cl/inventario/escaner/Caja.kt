@@ -302,6 +302,13 @@ object ExcelInventario {
         return base + extra
     }
 
+    /** Encabezado de las columnas con la foto de la serie de cada componente. */
+    const val PREFIJO_SERIE = "Foto serie: "
+
+    /** Componentes que tienen foto de serie en alguna caja de la pestaña (en el orden de la caja). */
+    fun columnasSerie(cajas: List<Caja>): List<String> =
+        Caja.COMPONENTES.filter { comp -> cajas.any { it.fotosSeries.containsKey("$comp|serie") } }
+
     fun hojas(cajas: List<Caja>, archivoFoto: (String) -> java.io.File): List<XlsxWriter.Hoja> {
         val grupos = linkedMapOf(
             Caja.RETIRO to cajas.filter { it.trabajo == Caja.RETIRO },
@@ -312,16 +319,24 @@ object ExcelInventario {
 
         return grupos.map { (nombre, lista) ->
             val columnas = columnasFoto(nombre, lista)
+            val series = columnasSerie(lista)
             val fotos = mutableListOf<XlsxWriter.FotoCelda>()
             lista.forEachIndexed { i, c ->
                 columnas.forEachIndexed { j, (k, titulo) ->
                     val f = c.fotos[k] ?: return@forEachIndexed
                     fotos.add(XlsxWriter.FotoCelda(i, Caja.PRIMERA_COLUMNA_FOTO + j, archivoFoto(f), "$titulo · ${textoCaja(c)}"))
                 }
+                // Fotos de la serie de cada componente, en columnas «Foto serie: …» después de las del POS.
+                series.forEachIndexed { j, comp ->
+                    val f = c.fotosSeries["$comp|serie"] ?: return@forEachIndexed
+                    fotos.add(XlsxWriter.FotoCelda(i, Caja.PRIMERA_COLUMNA_FOTO + columnas.size + j, archivoFoto(f),
+                        "Serie ${Caja.etiqueta(comp, c.tipo)}: ${c.pieza(comp).serie} · ${textoCaja(c)}"))
+                }
             }
+            val total = columnas.size + series.size
             XlsxWriter.Hoja(
-                nombre, Caja.encabezado(columnas), lista.mapIndexed { i, c -> c.comoFila(i + 1, columnas.size) },
-                Caja.anchos(columnas.size), fotos,
+                nombre, Caja.encabezado(columnas) + series.map { "$PREFIJO_SERIE$it" }, lista.mapIndexed { i, c -> c.comoFila(i + 1, total) },
+                Caja.anchos(total), fotos,
             )
         }
     }

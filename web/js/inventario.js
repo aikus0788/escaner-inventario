@@ -374,6 +374,8 @@ export async function pantallaInventario(app) {
           const r = leerXlsx(new Uint8Array(await f.arrayBuffer()));
           for (const l of r) {
             for (const [k, bytes] of Object.entries(l.fotos)) l.caja.fotos[k] = await guardarFoto(new Blob([bytes], { type: 'image/jpeg' }));
+            l.caja.fotosSeries = {};
+            for (const [k, bytes] of Object.entries(l.fotosSeries || {})) l.caja.fotosSeries[k] = await guardarFoto(new Blob([bytes], { type: 'image/jpeg' }));
           }
           return r.map((l) => l.caja);
         });
@@ -391,7 +393,7 @@ export async function pantallaInventario(app) {
         tipo = u.tipo;
         pintarTipo();
         limpiarCaja();
-        const nf = leidas.reduce((a, c) => a + Object.keys(c.fotos).length, 0);
+        const nf = leidas.reduce((a, c) => a + Object.keys(c.fotos).length + Object.keys(c.fotosSeries || {}).length, 0);
         aviso(`Excel cargado: ${leidas.length} cajas${nf ? ` y ${nf} fotos` : ''}.`);
       } catch (e) {
         await elegir('No se pudo cargar', [], { mensaje: e.message || 'Revisa que sea un archivo .xlsx.', cancelar: 'Entendido' });

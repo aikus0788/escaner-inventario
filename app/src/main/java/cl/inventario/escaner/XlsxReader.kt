@@ -17,7 +17,7 @@ object XlsxReader {
     class FormatoNoValido(msg: String) : Exception(msg)
 
     /** Una caja leída del Excel y sus fotos (clave del campo → bytes JPEG). */
-    data class CajaLeida(val caja: Caja, val fotos: Map<String, ByteArray>)
+    data class CajaLeida(val caja: Caja, val fotos: Map<String, ByteArray>, val fotosSeries: Map<String, ByteArray> = emptyMap())
 
     /** Lee todas las pestañas con cajas (por ejemplo «Retiro» e «Instalación») y las junta. */
     fun leerCajas(input: InputStream): List<CajaLeida> {
@@ -81,6 +81,9 @@ object XlsxReader {
         // Columnas de las 5 fotos: "Foto: Serie del POS", …
         val colsFoto = Caja.FOTOS_POS.associate { (clave, nombre) -> clave to exacta(normalizar("Foto: $nombre")) }
             .filterValues { it >= 0 }
+        // Columnas «Foto serie: Impresora», …
+        val colsSerie = Caja.COMPONENTES.associate { c -> "$c|serie" to exacta(normalizar(ExcelInventario.PREFIJO_SERIE + c)) }
+            .filterValues { it >= 0 }
 
         // Formato nuevo: "Pantalla - Modelo", "Pantalla - Serie", …
         val colsPieza = Caja.COMPONENTES.associateWith { c ->
@@ -127,7 +130,8 @@ object XlsxReader {
             if (tieneDatos) {
                 val filaCero = numerosDeFila[i] - 1
                 val fotos = colsFoto.mapNotNull { (clave, c) -> imagenes[filaCero to c]?.let { clave to it } }.toMap()
-                cajas.add(CajaLeida(caja, fotos))
+                val series = colsSerie.mapNotNull { (clave, c) -> imagenes[filaCero to c]?.let { clave to it } }.toMap()
+                cajas.add(CajaLeida(caja, fotos, series))
             }
         }
         return cajas

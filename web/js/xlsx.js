@@ -24,6 +24,10 @@ export function columnasFoto(trabajo, cajas) {
   return [...base, ...FOTOS_POS.filter((f) => !base.includes(f) && cajas.some((c) => c.fotos?.[f[0]]))];
 }
 
+export const PREFIJO_SERIE = 'Foto serie: ';
+/** Componentes que tienen foto de serie en alguna caja de la pestaña. */
+export const columnasSerie = (cajas) => COMPONENTES.filter((comp) => cajas.some((c) => c.fotosSeries?.[`${comp}|serie`]));
+
 export function comoFila(c, n, columnasFoto = FOTOS_POS.length) {
   const f = [String(n), c.fecha, c.trabajo, c.cliente, c.tienda, c.direccion, c.region, c.tipo, c.ubicacion, c.numeroPos];
   for (const comp of COMPONENTES) {
@@ -184,8 +188,17 @@ export async function hojasInventario(cajas, fotoBytes) {
         if (bytes?.length) fotos.push({ fila: i, columna: PRIMERA_COLUMNA_FOTO + j, bytes, descripcion: `${titulo} · ${textoCaja(c)}` });
       }
     }
-    const encabezado = [...ENCABEZADO.slice(0, PRIMERA_COLUMNA_FOTO), ...cols.map(([, t]) => `Foto: ${t}`)];
-    hojas.push({ nombre, encabezado, filas: lista.map((c, i) => comoFila(c, i + 1, cols.length)), fotos });
+    // Fotos de la serie de cada componente, en columnas «Foto serie: …» después de las del POS.
+    const series = columnasSerie(lista);
+    for (const [i, c] of lista.entries()) {
+      for (const [j, comp] of series.entries()) {
+        const id = c.fotosSeries?.[`${comp}|serie`];
+        const bytes = id ? await fotoBytes(id) : null;
+        if (bytes?.length) fotos.push({ fila: i, columna: PRIMERA_COLUMNA_FOTO + cols.length + j, bytes, descripcion: `Serie ${etiqueta(comp, c.tipo)}: ${c.piezas?.[comp]?.serie || ''} · ${textoCaja(c)}` });
+      }
+    }
+    const encabezado = [...ENCABEZADO.slice(0, PRIMERA_COLUMNA_FOTO), ...cols.map(([, t]) => `Foto: ${t}`), ...series.map((s) => `${PREFIJO_SERIE}${s}`)];
+    hojas.push({ nombre, encabezado, filas: lista.map((c, i) => comoFila(c, i + 1, cols.length + series.length)), fotos });
   }
   return hojas;
 }
@@ -311,6 +324,7 @@ export function leerXlsx(bytes) {
     };
     const piezasCols = COMPONENTES.map((c) => [c, enc.indexOf(normalizar(c) + 'modelo'), enc.indexOf(normalizar(c) + 'serie')]);
     const fotosCols = FOTOS_POS.map(([k, n]) => [k, enc.indexOf(normalizar(`Foto: ${n}`))]).filter(([, i]) => i >= 0);
+    const seriesCols = COMPONENTES.map((c) => [`${c}|serie`, enc.indexOf(normalizar(PREFIJO_SERIE + c))]).filter(([, i]) => i >= 0);
     const imagenes = imagenesDeHoja(archivos, h.ruta);
     const nh = normalizar(h.nombre);
     const trabajoHoja = nh.startsWith('ret') ? RETIRO : nh.startsWith('ins') ? INSTALACION : '';
@@ -330,8 +344,10 @@ export function leerXlsx(bytes) {
       };
       const fotos = {};
       for (const [k, ci] of fotosCols) { const b = imagenes.get(`${n - 1},${ci}`); if (b) fotos[k] = b; }
+      const fotosSeries = {};
+      for (const [k, ci] of seriesCols) { const b = imagenes.get(`${n - 1},${ci}`); if (b) fotosSeries[k] = b; }
       const tiene = Object.keys(piezas).length || Object.keys(fotos).length || [caja.cliente, caja.tienda, caja.ubicacion, caja.numeroPos, caja.notas, caja.estado].some(Boolean);
-      if (tiene) resultado.push({ caja, fotos });
+      if (tiene) resultado.push({ caja, fotos, fotosSeries });
     }
   }
   if (!conColumnas) throw new Error('No encontré las columnas (Tipo, Modelo, Serie…) en el Excel.');

@@ -13,6 +13,28 @@ const OTROS = 'Otros';
 const TIPOS_ACTIVIDAD = ['Instalación', 'Retiro', 'Reposicionamiento', 'Mantención', 'Reparación', 'Revisión', 'Cambio de equipo', OTROS];
 const TIPOS_EQUIPO = ['POS', 'SSCO', 'Pantalla', 'Segunda pantalla', 'Impresora', 'Gaveta', 'Teclado', 'Scanner de mano', 'Scanner de mesón'];
 
+/**
+ * Detalle de la OT en modo conteo desde el Inventario: una línea por trabajo, tipo de equipo y modelo,
+ * con la cantidad. La serie solo se escribe cuando es 1 equipo (igual que en la app de Android).
+ */
+export function lineasDesdeInventario(cajas) {
+  const grupos = new Map();
+  for (const c of cajas) {
+    for (const comp of POR_TIPO[c.tipo] || COMPONENTES) {
+      const p = c.piezas?.[comp];
+      if (!p || !(p.modelo || p.serie)) continue;
+      const equipo = etiqueta(comp, c.tipo);
+      const modelo = (p.modelo || '').trim();
+      const k = [c.trabajo || '', equipo, modelo].join('|').toLowerCase();
+      if (!grupos.has(k)) { const o = COMPONENTES.indexOf(comp); grupos.set(k, { trabajo: c.trabajo || '', equipo, modelo, orden: o < 0 ? 99 : o, series: [] }); }
+      grupos.get(k).series.push((p.serie || '').trim());
+    }
+  }
+  const ot = (t) => (t === 'Retiro' ? 0 : t === 'Instalación' ? 1 : 2);
+  return [...grupos.values()].sort((a, b) => ot(a.trabajo) - ot(b.trabajo) || a.orden - b.orden)
+    .map((g) => ({ tipoActividad: g.trabajo, cantidad: String(g.series.length), modelo: g.modelo, tipoEquipo: g.equipo, serie: g.series.length === 1 ? g.series[0] : '' }));
+}
+
 export async function resumenOt() {
   const ot = await db.get('kv', 'ot');
   return ot?.numero ? `OT en curso: N° ${ot.numero}` : '';
@@ -137,16 +159,14 @@ export async function pantallaOt(app) {
 
   async function copiarDesdeInventario() {
     const cajas = await cargarCajas();
-    const nuevas = [];
-    for (const c of cajas) {
-      for (const comp of POR_TIPO[c.tipo] || COMPONENTES) {
-        const p = c.piezas?.[comp];
-        if (p && (p.modelo || p.serie)) nuevas.push({ tipoActividad: c.trabajo || '', cantidad: '1', modelo: p.modelo, tipoEquipo: etiqueta(comp, c.tipo), serie: p.serie });
-      }
-    }
+    const nuevas = lineasDesdeInventario(cajas);
     if (!nuevas.length) { aviso('El inventario no tiene equipos registrados.'); return; }
-    const extra = nuevas.length > MAX_LINEAS ? `\n\nHay ${nuevas.length} equipos y la OT tiene ${MAX_LINEAS} líneas: se copian los primeros ${MAX_LINEAS}.` : '';
-    if (!(await confirmar('Copiar desde Inventario', `Se reemplazará el detalle actual por ${Math.min(nuevas.length, MAX_LINEAS)} equipos del inventario.${extra}`, 'Copiar'))) return;
+    const extra = nuevas.length > MAX_LINEAS ? `\n\nSon ${nuevas.length} líneas y la OT tiene ${MAX_LINEAS}: se copian las primeras ${MAX_LINEAS}.` : '';
+    if (!(await confirmar('Copiar desde Inventario', `Se reemplazará el detalle actual por ${Math.min(nuevas.length, MAX_LINEAS)} líneas con la cantidad de equipos por modelo.${extra}`, 'Copiar'))) return;
+    ponerLineasInventario(cajas, nuevas);
+  }
+
+  function ponerLineasInventario(cajas, nuevas) {
     lineas.splice(0).forEach((l) => l.nodo.remove());
     nuevas.slice(0, MAX_LINEAS).forEach((l) => agregarLinea(l));
     const c = cajas[0];
@@ -155,7 +175,18 @@ export async function pantallaOt(app) {
       if (!f.local.value) f.local.value = c.tienda || '';
       if (!f.direccion.value) f.direccion.value = c.direccion || '';
     }
-    aviso('Equipos copiados. Revisa y completa lo que falte.');
+    guardarBorrador();
+    const n = nuevas.reduce((a, l) => a + (parseInt(l.cantidad, 10) || 0), 0);
+    aviso(`Detalle llenado desde el Inventario: ${n} equipos en ${Math.min(nuevas.length, MAX_LINEAS)} líneas. Revisa y completa lo que falte.`);
+  }
+
+  /** Al entrar: si el detalle está vacío y hay equipos en el Inventario, se llena solo (modo conteo). */
+  async function llenarDesdeInventarioSiVacio() {
+    const conDatos = leerOt().lineas.some((l) => [l.tipoActividad, l.modelo, l.tipoEquipo, l.serie, l.actividadOtra].some(Boolean));
+    if (conDatos) return;
+    const cajas = await cargarCajas();
+    const nuevas = lineasDesdeInventario(cajas);
+    if (nuevas.length) ponerLineasInventario(cajas, nuevas);
   }
 
   // ---------- Firma ----------
@@ -472,6 +503,7 @@ export async function pantallaOt(app) {
     if (i === null) { if (obligatorio) location.hash = '#inicio'; return; }
     tipoOt = i === 1 ? 'IMX' : 'NCR';
     chipTipo.textContent = tipoOt === 'IMX' ? 'OT IMX ▾' : 'OT NCR Voyix ▾';
+    if (obligatorio) await llenarDesdeInventarioSiVacio();
   }
 
   app.replaceChildren(
