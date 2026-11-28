@@ -14,13 +14,13 @@ const TIPOS_ACTIVIDAD = ['Instalación', 'Retiro', 'Reposicionamiento', 'Mantenc
 const TIPOS_EQUIPO = ['POS', 'SSCO', 'Pantalla', 'Segunda pantalla', 'Impresora', 'Gaveta', 'Teclado', 'Scanner de mano', 'Scanner de mesón'];
 
 /**
- * Detalle de la OT en modo conteo desde el Inventario: una línea por trabajo, tipo de equipo y modelo,
- * con la cantidad. La serie solo se escribe cuando es 1 equipo (igual que en la app de Android).
+ * Detalle de la OT en modo conteo desde el Inventario: solo el equipo principal de cada caja (POS o SSCO),
+ * una línea por trabajo, tipo y modelo, con la cantidad. La serie solo se escribe cuando es 1 equipo (igual que en Android).
  */
 export function lineasDesdeInventario(cajas) {
   const grupos = new Map();
   for (const c of cajas) {
-    for (const comp of POR_TIPO[c.tipo] || COMPONENTES) {
+    for (const comp of [COMPONENTES[0]]) {
       const p = c.piezas?.[comp];
       if (!p || !(p.modelo || p.serie)) continue;
       const equipo = etiqueta(comp, c.tipo);

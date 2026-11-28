@@ -58,15 +58,15 @@ data class OrdenTrabajo(
 }
 
 /**
- * Detalle de la OT en modo conteo desde el Inventario: una línea por trabajo, tipo de equipo y modelo,
- * con la cantidad de equipos. La serie solo se escribe cuando es 1 equipo.
+ * Detalle de la OT en modo conteo desde el Inventario: solo el equipo principal de cada caja (POS o SSCO),
+ * una línea por trabajo, tipo y modelo, con la cantidad. La serie solo se escribe cuando es 1 equipo.
  * Ej.: 5 POS TCx700 retirados → «Retiro · 5 · TCx700 · POS · (sin serie)».
  */
 fun lineasDesdeInventario(cajas: List<Caja>): List<LineaOt> {
     data class Grupo(val trabajo: String, val equipo: String, val modelo: String, val orden: Int, val series: MutableList<String>)
     val grupos = linkedMapOf<String, Grupo>()
     for (c in cajas) {
-        for (comp in Caja.POR_TIPO[c.tipo] ?: Caja.COMPONENTES) {
+        for (comp in listOf(Caja.PRINCIPAL)) {
             val p = c.piezas[comp] ?: continue
             if (p.vacia()) continue
             val equipo = Caja.etiqueta(comp, c.tipo)

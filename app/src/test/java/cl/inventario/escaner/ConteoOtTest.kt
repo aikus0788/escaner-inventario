@@ -27,9 +27,8 @@ class ConteoOtTest {
         val l = lineasDesdeInventario(cajas)
         assertEquals(
             listOf(
+                // Solo POS / SSCO: las impresoras no se cuentan.
                 LineaOt(Caja.RETIRO, "5", "TCx700", "POS", ""),
-                LineaOt(Caja.RETIRO, "2", "TM-T88V", "Impresora", ""),
-                LineaOt(Caja.RETIRO, "1", "TM-T20", "Impresora", "I20"),
                 LineaOt(Caja.INSTALACION, "1", "TCx700", "POS", "N40"),
             ),
             l,
